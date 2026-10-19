@@ -51,6 +51,7 @@ function saveCart(cart) {
   try {
     localStorage.setItem('cart', JSON.stringify(cart));
     updateCartCountBadge();
+  initPolicyLinks();
   } catch (e) {
     console.error('Error saving cart to localStorage', e);
   }
@@ -198,337 +199,6 @@ let activeInStockOnly = false;
 let activeFestiveOnly = false;
 let activeSort = 'featured';
 let isFilterDrawerOpen = false;
-
-// Carousel State
-let currentSlide = 0;
-let carouselInterval = null;
-let isScratchingCard = false;
-
-function initHeroCarousel() {
-  const section = document.getElementById('hero-carousel-section');
-  if (!section) return;
-
-  const slides = section.querySelectorAll('.carousel-slide');
-  const indicators = section.querySelectorAll('.carousel-indicators .indicator');
-  const prevBtn = document.getElementById('carousel-prev');
-  const nextBtn = document.getElementById('carousel-next');
-
-  if (slides.length === 0) return;
-
-  function showSlide(index) {
-    if (index >= slides.length) index = 0;
-    if (index < 0) index = slides.length - 1;
-    currentSlide = index;
-
-    slides.forEach((s, i) => {
-      s.classList.toggle('active', i === currentSlide);
-    });
-
-    indicators.forEach((dot, i) => {
-      dot.classList.toggle('active', i === currentSlide);
-    });
-  }
-
-  function nextSlide() {
-    showSlide(currentSlide + 1);
-  }
-
-  function prevSlide() {
-    showSlide(currentSlide - 1);
-  }
-
-  function startAutoPlay() {
-    stopAutoPlay();
-    carouselInterval = setInterval(() => {
-      if (!isScratchingCard) {
-        nextSlide();
-      }
-    }, 5500);
-  }
-
-  function stopAutoPlay() {
-    if (carouselInterval) {
-      clearInterval(carouselInterval);
-      carouselInterval = null;
-    }
-  }
-
-  // Prev / Next arrow clicks
-  nextBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    nextSlide();
-    startAutoPlay();
-  });
-
-  prevBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    prevSlide();
-    startAutoPlay();
-  });
-
-  // Indicator dot clicks
-  indicators.forEach((dot) => {
-    dot.addEventListener('click', (e) => {
-      e.preventDefault();
-      const idx = parseInt(dot.getAttribute('data-slide-to'), 10);
-      showSlide(idx);
-      startAutoPlay();
-    });
-  });
-
-  // Pause on hover
-  section.addEventListener('mouseenter', stopAutoPlay);
-  section.addEventListener('mouseleave', () => {
-    if (!isScratchingCard) startAutoPlay();
-  });
-
-  // Start auto-scrolling
-  startAutoPlay();
-}
-
-function initCountdowns() {
-  // Deal of the Day live countdown to midnight
-  function updateDealTimer() {
-    const now = new Date();
-    const midnight = new Date();
-    midnight.setHours(24, 0, 0, 0);
-    const diff = Math.max(0, midnight - now);
-
-    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-    const minutes = Math.floor((diff / 1000 / 60) % 60);
-    const seconds = Math.floor((diff / 1000) % 60);
-
-    const hEl = document.getElementById('deal-hours');
-    const mEl = document.getElementById('deal-minutes');
-    const sEl = document.getElementById('deal-seconds');
-
-    if (hEl) hEl.textContent = String(hours).padStart(2, '0');
-    if (mEl) mEl.textContent = String(minutes).padStart(2, '0');
-    if (sEl) sEl.textContent = String(seconds).padStart(2, '0');
-  }
-  updateDealTimer();
-  setInterval(updateDealTimer, 1000);
-
-  // Scratch card countdown (15-minute countdown timer)
-  let scratchSecondsLeft = 14 * 60 + 59;
-  const minEl = document.getElementById('scratch-min');
-  const secEl = document.getElementById('scratch-sec');
-
-  setInterval(() => {
-    if (scratchSecondsLeft > 0) {
-      scratchSecondsLeft--;
-    } else {
-      scratchSecondsLeft = 15 * 60; // reset window
-    }
-    const mins = Math.floor(scratchSecondsLeft / 60);
-    const secs = scratchSecondsLeft % 60;
-    if (minEl) minEl.textContent = String(mins).padStart(2, '0');
-    if (secEl) secEl.textContent = String(secs).padStart(2, '0');
-  }, 1000);
-}
-
-function initPromoCodeButtons() {
-  const copyBtn = document.getElementById('btn-copy-code');
-  if (copyBtn) {
-    copyBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const code = document.getElementById('promo-code-val')?.textContent || 'UTSAV500';
-      navigator.clipboard?.writeText(code).then(() => {
-        copyBtn.textContent = '✓ Copied!';
-        showToast(`Celebration Code "${code}" copied! Apply in cart for ₹500 OFF 🪔`, 'success');
-        localStorage.setItem('activeDiscountCode', code);
-        setTimeout(() => {
-          copyBtn.textContent = '📋 Copy Code';
-        }, 2500);
-      }).catch(() => {
-        showToast(`Code: ${code} - Apply at checkout!`, 'info');
-      });
-    });
-  }
-}
-
-function initScratchCard() {
-  const canvas = document.getElementById('scratch-canvas');
-  if (!canvas) return;
-
-  const ctx = canvas.getContext('2d');
-  const instructionEl = document.getElementById('scratch-instruction');
-  const redeemBtn = document.getElementById('btn-redeem-prize');
-
-  // Check if this account already claimed their free scratch card
-  const claimedReward = localStorage.getItem('claimedScratchReward');
-  if (claimedReward) {
-    try {
-      const parsed = JSON.parse(claimedReward);
-      canvas.style.display = 'none';
-      if (instructionEl) {
-        instructionEl.innerHTML = `✅ <strong>Free Card Claimed!</strong> Code: <code style="color:#6ee7b7; background:#0f172a; padding:2px 8px; border-radius:4px;">${parsed.code}</code>`;
-      }
-      if (redeemBtn) {
-        redeemBtn.textContent = '✓ Claimed in Cart';
-        redeemBtn.disabled = true;
-      }
-      return;
-    } catch(e) {}
-  }
-
-  // Draw shimmering metallic silver layer on canvas
-  function drawScratchLayer() {
-    ctx.globalCompositeOperation = 'source-over';
-    
-    // Silver / Platinum gradient
-    const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    grad.addColorStop(0, '#94a3b8');
-    grad.addColorStop(0.25, '#cbd5e1');
-    grad.addColorStop(0.5, '#f8fafc');
-    grad.addColorStop(0.75, '#cbd5e1');
-    grad.addColorStop(1, '#64748b');
-
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Golden sparkles
-    ctx.fillStyle = 'rgba(217, 119, 6, 0.4)';
-    for (let i = 0; i < 28; i++) {
-      const x = (i * 39) % canvas.width;
-      const y = (i * 47) % canvas.height;
-      ctx.beginPath();
-      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Border line inside card
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
-
-    // Text on silver layer
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 15px Outfit, sans-serif';
-    ctx.fillText('✨ FREE SCRATCH CARD ✨', canvas.width / 2, 55);
-
-    ctx.font = '600 12px Outfit, sans-serif';
-    ctx.fillStyle = '#334155';
-    ctx.fillText('Scratch here with mouse or touch!', canvas.width / 2, 84);
-
-    ctx.font = 'bold 11px Outfit, sans-serif';
-    ctx.fillStyle = '#c2410c';
-    ctx.fillText('🎁 1 Free Card For Each Account', canvas.width / 2, 112);
-  }
-
-  drawScratchLayer();
-
-  // Scratch mechanics
-  let isDrawing = false;
-  let scratchedSamples = 0;
-  let isRevealed = false;
-
-  function scratch(x, y) {
-    if (isRevealed) return;
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.beginPath();
-    ctx.arc(x, y, 18, 0, Math.PI * 2);
-    ctx.fill();
-    checkScratchPercentage();
-  }
-
-  function getMousePos(e) {
-    const rect = canvas.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    return {
-      x: (clientX - rect.left) * (canvas.width / rect.width),
-      y: (clientY - rect.top) * (canvas.height / rect.height)
-    };
-  }
-
-  function checkScratchPercentage() {
-    if (isRevealed) return;
-    scratchedSamples++;
-    if (scratchedSamples % 12 === 0) {
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const pixels = imgData.data;
-      let transparentCount = 0;
-      for (let i = 3; i < pixels.length; i += 16) {
-        if (pixels[i] === 0) transparentCount++;
-      }
-      const totalSampled = pixels.length / 16;
-      const ratio = transparentCount / totalSampled;
-
-      if (ratio > 0.38) {
-        revealPrize();
-      }
-    }
-  }
-
-  function revealPrize() {
-    if (isRevealed) return;
-    isRevealed = true;
-    isScratchingCard = false;
-
-    canvas.style.opacity = '0';
-    setTimeout(() => {
-      canvas.style.display = 'none';
-    }, 400);
-
-    if (instructionEl) {
-      instructionEl.innerHTML = `🎉 <strong>Congratulations!</strong> You won ₹250 Discount!`;
-    }
-
-    showToast('🎉 You scratched and unlocked ₹250 Discount! Click "Redeem Gift" to save.', 'success');
-  }
-
-  function startScratch(e) {
-    isDrawing = true;
-    isScratchingCard = true;
-    const pos = getMousePos(e);
-    scratch(pos.x, pos.y);
-  }
-
-  function moveScratch(e) {
-    if (!isDrawing) return;
-    if (e.cancelable) e.preventDefault();
-    const pos = getMousePos(e);
-    scratch(pos.x, pos.y);
-  }
-
-  function endScratch() {
-    isDrawing = false;
-    isScratchingCard = false;
-  }
-
-  canvas.addEventListener('mousedown', startScratch);
-  window.addEventListener('mousemove', moveScratch);
-  window.addEventListener('mouseup', endScratch);
-
-  canvas.addEventListener('touchstart', startScratch, { passive: true });
-  window.addEventListener('touchmove', moveScratch, { passive: false });
-  window.addEventListener('touchend', endScratch);
-
-  // Redeem Gift Button Handler
-  redeemBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    const reward = {
-      code: 'LUCKY250',
-      discount: 250,
-      claimedAt: new Date().toISOString()
-    };
-    localStorage.setItem('claimedScratchReward', JSON.stringify(reward));
-    localStorage.setItem('activeDiscountCode', 'LUCKY250');
-
-    navigator.clipboard?.writeText('LUCKY250');
-    showToast('🎁 Coupon "LUCKY250" redeemed! ₹250 discount will be applied in your cart.', 'success');
-
-    redeemBtn.textContent = '✓ Saved in Cart';
-    redeemBtn.disabled = true;
-
-    if (instructionEl) {
-      instructionEl.innerHTML = `✅ <strong>Reward Claimed!</strong> Applied automatically in cart.`;
-    }
-  });
-}
 
 async function initIndexPage() {
   const productsGrid = document.getElementById('products-grid');
@@ -1425,6 +1095,9 @@ function renderCartView() {
 
       // Success! Clear cart and display Order Confirmation view
       clearCart();
+      if (data.order && data.order.id) {
+        localStorage.setItem('lastPlacedOrderId', String(data.order.id));
+      }
       renderOrderSuccess(data.order);
     } catch (err) {
       console.error('Order error:', err);
@@ -1536,53 +1209,11 @@ function renderTrackerBarHTML(order, currentStatusOverride) {
           <strong style="color: var(--secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;" title="${escapeHtml(order.shipping_address || order.shippingAddress || 'India')}">${escapeHtml(order.shipping_address || order.shippingAddress || 'India')}</strong>
         </div>
       </div>
-
-      <!-- Interactive Milestone Simulator -->
-      <div class="tracker-sim-box">
-        <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">
-          ⚡ <strong>Simulate Status:</strong> (Click to test straight line progress)
-        </div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button type="button" class="btn-sim-status ${currentStatus === 'Order Placed' ? 'active-sim' : ''}" onclick="window.simulateOrderStatus(${order.id}, 'Order Placed')">1. Order Placed</button>
-          <button type="button" class="btn-sim-status ${currentStatus === 'Processing' ? 'active-sim' : ''}" onclick="window.simulateOrderStatus(${order.id}, 'Processing')">2. Processing</button>
-          <button type="button" class="btn-sim-status ${currentStatus === 'Shipped' ? 'active-sim' : ''}" onclick="window.simulateOrderStatus(${order.id}, 'Shipped')">3. Shipped</button>
-          <button type="button" class="btn-sim-status ${currentStatus === 'Out for Delivery' ? 'active-sim' : ''}" onclick="window.simulateOrderStatus(${order.id}, 'Out for Delivery')">4. Out for Delivery</button>
-          <button type="button" class="btn-sim-status ${currentStatus === 'Delivered' ? 'active-sim' : ''}" onclick="window.simulateOrderStatus(${order.id}, 'Delivered')">5. Delivered</button>
-        </div>
-      </div>
     </div>
   `;
 }
 
-// Global function to simulate and update order status via API
-window.simulateOrderStatus = async function(orderId, newStatus) {
-  try {
-    const res = await fetch(`/api/orders/${orderId}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus })
-    });
-    const data = await res.json();
-    if (res.ok && data.order) {
-      showToast(`Status updated: ${newStatus}`, 'success');
-      // Re-render tracker in place if present
-      const card = document.getElementById(`tracking-card-${orderId}`);
-      if (card) {
-        card.outerHTML = renderTrackerBarHTML(data.order);
-      }
-      // If on dedicated tracking page
-      if (window.currentTrackedOrder && window.currentTrackedOrder.id === orderId) {
-        window.currentTrackedOrder = data.order;
-        renderTrackedOrderDetails(data.order);
-      }
-    } else {
-      showToast(data.error || 'Failed to update status', 'error');
-    }
-  } catch (err) {
-    console.error('Error simulating order status:', err);
-    showToast('Failed to connect to order status service.', 'error');
-  }
-};
+
 
 function renderOrderSuccess(order) {
   const cartView = document.getElementById('cart-view');
@@ -1849,9 +1480,7 @@ function initTrackOrderPage() {
           <h3 style="font-size: 1.4rem; color: var(--secondary); margin-bottom: 8px;">Order Not Found</h3>
           <p style="color: var(--text-muted); max-width: 520px; margin: 0 auto 20px;">${escapeHtml(err.message)}</p>
           <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-            <button type="button" class="btn-primary" onclick="window.loadQuickSampleOrder(1)" style="padding: 9px 18px; font-size: 0.9rem;">
-              🔍 Try Sample Order #1
-            </button>
+            <a href="cart.html" class="btn-secondary" style="padding: 9px 18px; font-size: 0.9rem; text-decoration: none;">View Your Bag</a>
             <a href="index.html" class="btn-secondary" style="padding: 9px 18px; font-size: 0.9rem; text-decoration: none;">
               Browse Products
             </a>
@@ -1861,11 +1490,23 @@ function initTrackOrderPage() {
     }
   }
 
-  // Quick sample loader exposed on window
-  window.loadQuickSampleOrder = function(id) {
-    trackInput.value = id;
-    loadOrder(id);
-  };
+  // Session-aware quick tracking helper
+  const recentOrderId = localStorage.getItem('lastPlacedOrderId');
+  const recentOrderWrap = document.getElementById('recent-order-suggestion');
+  if (recentOrderWrap && recentOrderId) {
+    recentOrderWrap.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--text-muted);">
+        <span>Recent order:</span>
+        <button type="button" id="btn-quick-recent-order" style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 5px 12px; border-radius: var(--radius-sm); font-size: 0.82rem; cursor: pointer; color: var(--primary); font-weight: 700;">
+          #ORD-${escapeHtml(recentOrderId)} (Track)
+        </button>
+      </div>
+    `;
+    document.getElementById('btn-quick-recent-order')?.addEventListener('click', () => {
+      trackInput.value = recentOrderId;
+      loadOrder(recentOrderId);
+    });
+  }
 
   trackForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -1963,6 +1604,110 @@ function renderTrackedOrderDetails(order) {
       </div>
     </div>
   `;
+}
+
+
+// ----------------------------------------------------
+// Customer Care & Policy Dialog System
+// ----------------------------------------------------
+const STORE_POLICIES = {
+  shipping: {
+    title: 'Shipping & Delivery Policy',
+    icon: '🚚',
+    badge: 'Express Pan-India Logistics',
+    content: `
+      <p style="margin-bottom: 12px;">We partner with premier express carriers including BlueDart and Delhivery to deliver authentic artisanal essentials across every serviceable PIN code in India.</p>
+      <ul style="padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem; color: var(--secondary);">
+        <li><strong>Free Express Delivery:</strong> Complimentary on all orders above ₹999. A flat nominal fee of ₹99 applies to orders under ₹999.</li>
+        <li><strong>Dispatch Window:</strong> All orders are verified and dispatched from our logistics center within 24 to 48 hours of placement.</li>
+        <li><strong>Estimated Transit Time:</strong> 2 to 4 business days for major metropolitan areas; 3 to 6 business days for rest of India.</li>
+        <li><strong>Real-time Tracking:</strong> Every shipment includes a live Air Waybill (AWB) reference to follow milestone updates.</li>
+      </ul>
+    `
+  },
+  returns: {
+    title: '7-Day Easy Returns & Exchanges',
+    icon: '🔄',
+    badge: 'Hassle-Free Doorstep Guarantee',
+    content: `
+      <p style="margin-bottom: 12px;">Your satisfaction is our priority. If an item does not meet your expectations, you may initiate a return or exchange within 7 days of delivery.</p>
+      <ul style="padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem; color: var(--secondary);">
+        <li><strong>Eligibility:</strong> Items must be in original unworn condition with tags attached and packaging preserved.</li>
+        <li><strong>Doorstep Pickup:</strong> Our carrier partner collects the package directly from your delivery address at no extra fee.</li>
+        <li><strong>Speedy Refunds:</strong> Following quality verification at our hub, refunds are credited to your original payment method within 2 to 4 business days.</li>
+      </ul>
+    `
+  },
+  contact: {
+    title: 'Customer Care & Help Desk',
+    icon: '💬',
+    badge: 'Dedicated Support Team',
+    content: `
+      <p style="margin-bottom: 12px;">Have questions about sizing, delivery, or custom orders? Our team is glad to assist you.</p>
+      <ul style="padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem; color: var(--secondary);">
+        <li><strong>Support Email:</strong> <a href="mailto:care@smartgrabstore.in" style="color: var(--primary); font-weight: 600;">care@smartgrabstore.in</a></li>
+        <li><strong>Support Hours:</strong> Monday – Saturday, 9:00 AM – 8:00 PM IST</li>
+        <li><strong>Order Inquiries:</strong> Please mention your Order Reference ID (#ORD-XXXX) for rapid assistance.</li>
+        <li><strong>Live Shipment Tracking:</strong> You can track active shipments directly on our <a href="track.html" style="color: var(--primary); font-weight: 600; text-decoration: underline;">Tracking Page</a>.</li>
+      </ul>
+    `
+  }
+};
+
+function openPolicyModal(type) {
+  const policy = STORE_POLICIES[type] || STORE_POLICIES.shipping;
+  let modal = document.getElementById('store-policy-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'store-policy-modal';
+    modal.className = 'policy-modal-backdrop';
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div class="policy-modal-card" role="dialog" aria-modal="true" aria-labelledby="policy-modal-title">
+      <div class="policy-modal-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 1.6rem;">${policy.icon}</span>
+          <div>
+            <h3 id="policy-modal-title" style="margin: 0; font-size: 1.25rem; color: var(--secondary); font-weight: 700;">${policy.title}</h3>
+            <span style="font-size: 0.78rem; color: var(--primary); font-weight: 700; text-transform: uppercase;">${policy.badge}</span>
+          </div>
+        </div>
+        <button type="button" class="policy-modal-close" id="btn-close-policy-modal" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="policy-modal-body">
+        ${policy.content}
+      </div>
+      <div class="policy-modal-footer">
+        <button type="button" class="btn-primary" id="btn-dismiss-policy-modal" style="padding: 8px 24px; font-size: 0.9rem;">Close</button>
+      </div>
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  const closeModal = () => {
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+  };
+
+  document.getElementById('btn-close-policy-modal')?.addEventListener('click', closeModal);
+  document.getElementById('btn-dismiss-policy-modal')?.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+}
+
+function initPolicyLinks() {
+  document.querySelectorAll('[data-policy]').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const policyType = link.getAttribute('data-policy');
+      openPolicyModal(policyType);
+    });
+  });
 }
 
 // ----------------------------------------------------

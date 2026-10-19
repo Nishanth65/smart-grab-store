@@ -1849,24 +1849,6 @@ textarea.form-control {
     padding: 6px 8px;
     font-size: 0.85rem;
   }
-
-  .scratch-slide-layout {
-    grid-template-columns: 1fr;
-    text-align: center;
-    gap: 24px;
-  }
-
-  .scratch-slide-layout .slide-badge-row {
-    justify-content: center;
-  }
-
-  .carousel-arrow {
-    display: none;
-  }
-
-  .slide-title {
-    font-size: 2rem;
-  }
 }
 
 @media (max-width: 640px) {
@@ -2053,40 +2035,7 @@ textarea.form-control {
   font-weight: 600;
 }
 
-/* Simulation Controls Box */
-.tracker-sim-box {
-  background: #f8fafc;
-  border: 1px dashed var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 12px 16px;
-  margin-top: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
 
-.btn-sim-status {
-  background: var(--secondary);
-  color: #fff;
-  border: none;
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.btn-sim-status:hover {
-  background: var(--primary);
-}
-
-.btn-sim-status.active-sim {
-  background: var(--primary);
-  box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.25);
-}
 
 /* Responsive adjustment for tracking bar on mobile */
 @media (max-width: 640px) {
@@ -2123,5 +2072,110 @@ textarea.form-control {
   }
   .step-subtitle {
     max-width: unset;
+  }
+}
+
+
+/* ==========================================================================
+   ENHANCED BRANDING, ACCESSIBILITY & POLICY MODAL
+   ========================================================================== */
+.brand-icon svg {
+  display: block;
+  stroke: var(--primary);
+  transition: transform 0.3s ease;
+}
+
+.brand-logo:hover .brand-icon svg {
+  transform: rotate(-8deg) scale(1.08);
+}
+
+/* Accessible focus ring */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Policy Dialog Modal */
+.policy-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.policy-modal-card {
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  max-width: 580px;
+  width: 100%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--border-color);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.policy-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-light);
+  background: #fafafa;
+}
+
+.policy-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+}
+
+.policy-modal-close:hover {
+  background: var(--border-light);
+  color: var(--secondary);
+}
+
+.policy-modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  line-height: 1.65;
+  color: #334155;
+  font-size: 0.95rem;
+}
+
+.policy-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-light);
+  background: #fafafa;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Reduced Motion for sensitive users */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

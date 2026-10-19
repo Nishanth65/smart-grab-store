@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Grab Store | Modern Essentials & Lifestyle Deals</title>
+    <meta name="description"
+        content="Discover premium handcrafted Indian ethnic wear, artisanal home decor, tech, and everyday essentials delivered across India." />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+    <!-- Navigation Bar -->
+    <header class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="brand-logo" id="brand-logo">
+                <div class="brand-icon">🛍️</div>
+                <span>Smart Grab <span class="highlight">Store</span></span>
+            </a>
+
+            <!-- Center Search Bar in Navbar -->
+            <div class="search-wrapper nav-search">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="search-input" class="search-input"
+                    placeholder="Search kurtas, kulhads, electronics, bags..." aria-label="Search products" />
+            </div>
+
+            <nav class="nav-menu">
+                <a href="index.html" class="nav-link active" id="nav-home">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                    Home
+                </a>
+
+                <a href="track.html" class="nav-link" id="nav-track">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="1" y="3" width="15" height="13"></rect>
+                        <polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon>
+                        <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                        <circle cx="18.5" cy="18.5" r="2.5"></circle>
+                    </svg>
+                    Track Order
+                </a>
+
+                <a href="cart.html" class="nav-link cart-link-wrapper" id="nav-cart">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="9" cy="21" r="1"></circle>
+                        <circle cx="20" cy="21" r="1"></circle>
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                    </svg>
+                    Cart <span class="cart-badge">0</span>
+                </a>
+
+                <div id="nav-auth-container" style="display: flex; align-items: center; gap: 14px;">
+                    <a href="login.html" class="nav-link" id="nav-login">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        Login
+                    </a>
+                    <a href="register.html" class="nav-link" id="nav-register">Register</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Real E-Commerce Hero Section -->
+    <section class="hero-section" id="hero-section">
+        <div class="hero-container">
+            <div class="hero-grid">
+                <!-- Left Column: Value Proposition & Call to Action -->
+                <div class="hero-text-content">
+                    <span class="hero-eyebrow">
+                        <span class="badge-dot"></span> Smart Living & Authentic Craftsmanship
+                    </span>
+                    <h1 class="hero-title">Curated Quality for <span>Modern Everyday Living</span></h1>
+                    <p class="hero-description">
+                        From breathable pure cotton ethnic wear and handcrafted clay pottery to high-performance wireless audio and genuine leather accessories — thoughtfully curated and delivered with care across India.
+                    </p>
+
+                    <div class="hero-cta-group">
+                        <a href="#products-grid" class="hero-btn-primary">
+                            <span>Browse All Products</span>
+                            <span>↓</span>
+                        </a>
+                        <a href="track.html" class="hero-btn-secondary">
+                            <span>Track Your Order</span>
+                            <span>🚚</span>
+                        </a>
+                    </div>
+
+                    <div class="hero-stats-row">
+                        <div class="hero-stat-item">
+                            <span class="hero-stat-num">4.8 ★</span>
+                            <span class="hero-stat-label">Customer Rating</span>
+                        </div>
+                        <div class="hero-stat-item">
+                            <span class="hero-stat-num">24h</span>
+                            <span class="hero-stat-label">Fast Dispatch</span>
+                        </div>
+                        <div class="hero-stat-item">
+                            <span class="hero-stat-num">100%</span>
+                            <span class="hero-stat-label">Verified Quality</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Featured Product Spotlight -->
+                <div class="hero-visual-content">
+                    <div class="hero-spotlight-card">
+                        <div class="hero-spotlight-img-wrap">
+                            <img src="https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=800&q=80" alt="Premium Cotton Kurta" class="hero-spotlight-img" />
+                            <span class="hero-spotlight-badge">⭐ Editor's Choice</span>
+                        </div>
+                        <div class="hero-spotlight-body">
+                            <span class="hero-spotlight-cat">Ethnic Wear</span>
+                            <h3 class="hero-spotlight-title">Premium Cotton Kurta</h3>
+                            <div class="hero-spotlight-pricing">
+                                <span class="hero-price-now">₹1,499.00</span>
+                                <span class="hero-price-was">₹2,499</span>
+                                <span class="hero-price-tag">40% OFF</span>
+                            </div>
+                            <p class="hero-spotlight-desc">100% pure breathable cotton with mandarin collar and artisanal tailoring.</p>
+                            <a href="product.html?id=1" class="hero-spotlight-btn">View Product Details →</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Trust & Value Proposition Strip -->
+    <div class="trust-bar">
+        <div class="trust-bar-container">
+            <div class="trust-item">
+                <div class="trust-icon-box">🚚</div>
+                <div class="trust-text">
+                    <h4>Free Express Delivery</h4>
+                    <p>On all orders above ₹999 across India</p>
+                </div>
+            </div>
+            <div class="trust-item">
+                <div class="trust-icon-box">🛡️</div>
+                <div class="trust-text">
+                    <h4>100% Genuine Quality</h4>
+                    <p>Direct from verified artisans & makers</p>
+                </div>
+            </div>
+            <div class="trust-item">
+                <div class="trust-icon-box">🔄</div>
+                <div class="trust-text">
+                    <h4>7-Day Easy Returns</h4>
+                    <p>Hassle-free doorstep pickup & exchange</p>
+                </div>
+            </div>
+            <div class="trust-item">
+                <div class="trust-icon-box">🔒</div>
+                <div class="trust-text">
+                    <h4>Secure SSL Payments</h4>
+                    <p>256-bit encrypted checkout with UPI & Cards</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Store Catalogue -->
+    <main class="container">
+        <div class="section-header">
+            <div>
+                <h2 class="section-title">Curated Collection</h2>
+                <p class="section-subtitle">Authentic Indian quality with transparent INR pricing</p>
+            </div>
+
+            <!-- Action Controls (Filter Button + Sort Dropdown) -->
+            <div class="product-actions-bar">
+                <button class="btn-filter-toggle" id="btn-filter-toggle" type="button" aria-expanded="false"
+                    aria-controls="filter-drawer" title="Filter products">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                    </svg>
+                    <span>Filters</span>
+                    <span class="filter-count-badge" id="filter-count-badge" style="display: none;">0</span>
+                </button>
+
+                <div class="sort-wrapper">
+                    <label for="sort-select" class="sort-label">Sort:</label>
+                    <select id="sort-select" class="sort-select" aria-label="Sort products">
+                        <option value="featured">✨ Featured</option>
+                        <option value="price-asc">Price: Low to High</option>
+                        <option value="price-desc">Price: High to Low</option>
+                        <option value="name-asc">Name: A to Z</option>
+                        <option value="stock-desc">In-Stock First</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Category Filter Pills -->
+        <div class="category-filter" id="category-filter" role="tablist" aria-label="Product categories">
+            <button class="category-pill active" data-category="All">All Categories</button>
+        </div>
+
+        <!-- Expandable Filter Drawer -->
+        <div class="filter-drawer" id="filter-drawer" style="display: none;">
+            <div class="filter-drawer-header">
+                <div class="filter-drawer-title">
+                    <span>⚡</span>
+                    <h4>Filter Products</h4>
+                    <span class="filter-active-summary" id="filter-active-summary">All Items</span>
+                </div>
+                <button class="btn-clear-filters" id="btn-clear-filters" type="button">Reset All Filters</button>
+            </div>
+
+            <div class="filter-grid">
+                <!-- 1. Price Range Presets and Slider -->
+                <div class="filter-group">
+                    <label class="filter-group-title">Price Range</label>
+                    <div class="price-presets" id="price-presets">
+                        <button type="button" class="price-chip active" data-min="0" data-max="99999">All</button>
+                        <button type="button" class="price-chip" data-min="0" data-max="999">Under ₹1,000</button>
+                        <button type="button" class="price-chip" data-min="1000" data-max="2000">₹1,000 –
+                            ₹2,000</button>
+                        <button type="button" class="price-chip" data-min="2000" data-max="99999">₹2,000+</button>
+                    </div>
+                    <div class="price-slider-wrap">
+                        <div class="price-slider-labels">
+                            <span>Max Budget:</span>
+                            <strong id="price-slider-val">₹4,000</strong>
+                        </div>
+                        <input type="range" id="price-range-slider" min="499" max="4000" step="100" value="4000"
+                            class="price-range-input" aria-label="Maximum price filter" />
+                    </div>
+                </div>
+
+                <!-- 2. Categories Multi-Select Checkboxes -->
+                <div class="filter-group">
+                    <label class="filter-group-title">Categories</label>
+                    <div class="filter-categories-list" id="filter-categories-checkboxes">
+                        <!-- Dynamically populated by script.js -->
+                    </div>
+                </div>
+
+                <!-- 3. Availability & Deals Filter -->
+                <div class="filter-group">
+                    <label class="filter-group-title">Availability & Specials</label>
+                    <label class="filter-checkbox-label">
+                        <input type="checkbox" id="filter-in-stock" class="filter-checkbox" />
+                        <span>In Stock Only</span>
+                    </label>
+                    <label class="filter-checkbox-label" style="margin-top: 6px;">
+                        <input type="checkbox" id="filter-festive-deals" class="filter-checkbox" />
+                        <span>Under ₹1,500 Festive Deals</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="filter-drawer-footer">
+                <span class="filtered-results-count" id="filtered-results-count">Showing 8 products</span>
+                <button type="button" class="btn-apply-filters" id="btn-apply-filters">Close Filters</button>
+            </div>
+        </div>
+
+        <!-- Active Filter Chips Bar -->
+        <div class="active-filter-chips" id="active-filter-chips" style="display: none;">
+            <!-- Populated dynamically -->
+        </div>
+
+        <!-- Product Grid Container -->
+        <div class="products-grid" id="products-grid">
+            <!-- Dynamically populated by script.js -->
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-brand">
+                <a href="index.html" class="brand-logo">
+                    <div class="brand-icon">🛍️</div>
+                    <span>Smart Grab <span class="highlight">Store</span></span>
+                </a>
+                <p class="footer-text">Celebrating Indian heritage and modern design. Delivering authentic artisanal and
+                    daily lifestyle essentials across every pin code in India.</p>
+                <div class="made-in-india">
+                    <span>🇮🇳</span> Proudly Made for India
+                </div>
+            </div>
+
+            <div>
+                <h4 class="footer-heading">Quick Links</h4>
+                <ul class="footer-links">
+                    <li><a href="index.html">All Products</a></li>
+                    <li><a href="cart.html">View Bag</a></li>
+                    <li><a href="track.html">Track Order</a></li>
+                    <li><a href="login.html">Sign In</a></li>
+                    <li><a href="register.html">Create Account</a></li>
+                </ul>
+            </div>
+
+            <div>
+                <h4 class="footer-heading">Customer Care</h4>
+                <ul class="footer-links">
+                    <li><a href="track.html">Track Order</a></li>
+                    <li><a href="#">Shipping & Delivery</a></li>
+                    <li><a href="#">Returns & Exchanges</a></li>
+                    <li><a href="#">Contact Us</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <p>© 2026 Smart Grab Store. All rights reserved.</p>
+            <p>Secure 256-bit SSL Checkout</p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

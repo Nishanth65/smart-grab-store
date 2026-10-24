@@ -58,6 +58,11 @@ function saveCart(cart) {
 }
 
 function addToCart(product, quantity = 1) {
+  if (product.price_status === 'unverified' || !product.is_purchasable || product.price == null) {
+    showToast(`"${product.name}" is currently a catalog showcase item. Price on request.`, 'info');
+    return;
+  }
+
   const cart = getCart();
   const existingIndex = cart.findIndex((item) => item.id === product.id);
 
@@ -129,6 +134,34 @@ function getAuthToken() {
   return localStorage.getItem('token');
 }
 
+function setupPasswordToggle(btnId, inputId) {
+  const btn = document.getElementById(btnId);
+  const input = document.getElementById(inputId);
+  if (!btn || !input) return;
+
+  const eyeIconSvg = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+      <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+  `;
+  const eyeOffIconSvg = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+      <line x1="1" y1="1" x2="23" y2="23"></line>
+    </svg>
+  `;
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const isPassword = input.getAttribute('type') === 'password';
+    input.setAttribute('type', isPassword ? 'text' : 'password');
+    btn.innerHTML = isPassword ? eyeOffIconSvg : eyeIconSvg;
+    btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+    btn.setAttribute('title', isPassword ? 'Hide password' : 'Show password');
+  });
+}
+
 function getAuthUser() {
   try {
     const user = localStorage.getItem('user');
@@ -139,44 +172,71 @@ function getAuthUser() {
 }
 
 function setAuthSession(token, user) {
-  localStorage.setItem('token', token);
-  localStorage.setItem('user', JSON.stringify(user));
+  if (token) localStorage.setItem('token', token);
+  if (user) localStorage.setItem('user', JSON.stringify(user));
   updateNavbarAuth();
 }
 
-function clearAuthSession() {
+async function performLogout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } catch (err) {
+    console.error('Logout error:', err);
+  }
   localStorage.removeItem('token');
   localStorage.removeItem('user');
-  updateNavbarAuth();
   showToast('You have been logged out.', 'info');
   setTimeout(() => {
-    window.location.reload();
+    window.location.href = 'login.html';
   }, 400);
 }
 
-function updateNavbarAuth() {
-  const user = getAuthUser();
+async function updateNavbarAuth() {
   const authNavContainer = document.getElementById('nav-auth-container');
   if (!authNavContainer) return;
 
-  if (user && user.name) {
-    authNavContainer.innerHTML = `
-      <span class="user-greeting">Namaste, <strong>${escapeHtml(user.name.split(' ')[0])}</strong></span>
-      <button class="btn-logout" id="btn-logout" title="Sign out">Logout</button>
-    `;
+  try {
+    const res = await fetch('/api/auth/me');
+    if (res.ok) {
+      const data = await res.json();
+      const user = data.user || getAuthUser();
+      if (user) localStorage.setItem('user', JSON.stringify(user));
 
-    document.getElementById('btn-logout')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      clearAuthSession();
-    });
-  } else {
-    authNavContainer.innerHTML = `
-      <a href="login.html" class="nav-link" id="nav-login">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-        Login
-      </a>
-      <a href="register.html" class="nav-link" id="nav-register">Register</a>
-    `;
+      const firstName = user && (user.name || user.full_name)
+        ? (user.name || user.full_name).split(' ')[0]
+        : 'Shopper';
+
+      authNavContainer.innerHTML = `
+        <span class="user-greeting">Hi, <strong>${escapeHtml(firstName)}</strong></span>
+        <button type="button" class="btn-logout" id="btn-logout" title="Sign out of AuraStore">Logout</button>
+      `;
+
+      document.getElementById('btn-logout')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        performLogout();
+      });
+    } else {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+
+      // Check if current page is protected
+      const pathname = window.location.pathname.toLowerCase();
+      const isPublicPage = pathname.endsWith('login.html') || pathname.endsWith('register.html') || pathname === '/login' || pathname === '/register';
+      if (!isPublicPage) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      authNavContainer.innerHTML = `
+        <a href="login.html" class="nav-link" id="nav-login">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          Sign In
+        </a>
+        <a href="register.html" class="nav-link" id="nav-register">Create Account</a>
+      `;
+    }
+  } catch (err) {
+    console.warn('Navbar auth verification:', err);
   }
 }
 
@@ -200,6 +260,179 @@ let activeFestiveOnly = false;
 let activeSort = 'featured';
 let isFilterDrawerOpen = false;
 
+// Catalog Pagination State (batches of 12)
+let catalogCurrentPage = 1;
+const CATALOG_PAGE_SIZE = 12;
+let catalogTotalPages = 1;
+let catalogTotalCount = 0;
+let catalogHasMore = false;
+const catalogLoadedIds = new Set();
+let isFetchingCatalog = false;
+let searchDebounceTimer = null;
+
+/**
+ * Lightweight, Realistic Diwali Fireworks & Golden Particles Canvas
+ * - Generates occasional firework spark bursts over night sky
+ * - Gentle floating golden ambient dust
+ * - Capped at low particle counts (<60) to avoid CPU load
+ * - Respects prefers-reduced-motion
+ * - Auto-pauses when hero section is not visible
+ */
+function initDiwaliFireworksCanvas() {
+  const canvas = document.getElementById('diwali-fireworks-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (isReducedMotion) {
+    canvas.style.display = 'none';
+    return;
+  }
+
+  let width = (canvas.width = canvas.offsetWidth || window.innerWidth);
+  let height = (canvas.height = canvas.offsetHeight || 380);
+
+  function resizeCanvas() {
+    if (!canvas) return;
+    width = canvas.width = canvas.offsetWidth || window.innerWidth;
+    height = canvas.height = canvas.offsetHeight || 380;
+  }
+  window.addEventListener('resize', resizeCanvas, { passive: true });
+
+  const particles = [];
+  let isVisible = true;
+  let animFrameId = null;
+
+  // Use IntersectionObserver to sleep animation when hero is off-screen
+  const heroSection = document.getElementById('hero-section');
+  if ('IntersectionObserver' in window && heroSection) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        isVisible = entry.isIntersecting;
+        if (isVisible && !animFrameId) {
+          animFrameId = requestAnimationFrame(renderLoop);
+        }
+      });
+    }, { threshold: 0.05 });
+    observer.observe(heroSection);
+  }
+
+  const sparkColors = [
+    '#ff6000', // Vibrant Saffron
+    '#fbbf24', // Warm Gold
+    '#f43f5e', // Festive Crimson
+    '#c084fc', // Royal Violet
+    '#38bdf8', // Sparkler Sky Blue
+    '#ffd700', // Deep Gold
+    '#ffffff'  // Pure White
+  ];
+
+  function createFireworkBurst(x, y) {
+    const count = 16 + Math.floor(Math.random() * 10);
+    const col1 = sparkColors[Math.floor(Math.random() * sparkColors.length)];
+    const col2 = sparkColors[Math.floor(Math.random() * sparkColors.length)];
+
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + (Math.random() * 0.25 - 0.12);
+      const speed = 1.4 + Math.random() * 2.8;
+      particles.push({
+        x: x,
+        y: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        alpha: 1,
+        decay: 0.016 + Math.random() * 0.018,
+        radius: 1.2 + Math.random() * 1.6,
+        color: Math.random() > 0.4 ? col1 : col2
+      });
+    }
+  }
+
+  // Floating ambient golden bokeh motes
+  const ambientMotes = [];
+  for (let i = 0; i < 20; i++) {
+    ambientMotes.push({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: -0.15 - Math.random() * 0.35,
+      radius: 1 + Math.random() * 1.8,
+      alpha: 0.2 + Math.random() * 0.55,
+      pulseSpeed: 0.02 + Math.random() * 0.03
+    });
+  }
+
+  let nextBurstTime = Date.now() + 500;
+
+  function renderLoop() {
+    if (!isVisible) {
+      animFrameId = null;
+      return;
+    }
+
+    ctx.clearRect(0, 0, width, height);
+
+    // 1. Ambient golden floating particles
+    for (let i = 0; i < ambientMotes.length; i++) {
+      const m = ambientMotes[i];
+      m.x += m.vx;
+      m.y += m.vy;
+      m.alpha += Math.sin(Date.now() * m.pulseSpeed) * 0.008;
+      if (m.y < 0) m.y = height;
+      if (m.x < 0) m.x = width;
+      if (m.x > width) m.x = 0;
+
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(251, 191, 36, ${Math.max(0.12, Math.min(0.75, m.alpha))})`;
+      ctx.shadowColor = '#fbbf24';
+      ctx.shadowBlur = 4;
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // 2. Trigger periodic firework bursts in upper sky area
+    const now = Date.now();
+    if (now > nextBurstTime && particles.length < 50) {
+      const burstX = width * (0.2 + Math.random() * 0.6);
+      const burstY = height * (0.15 + Math.random() * 0.32);
+      createFireworkBurst(burstX, burstY);
+      nextBurstTime = now + 1600 + Math.random() * 2000;
+    }
+
+    // 3. Update and draw burst sparks
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.038; // gravity
+      p.vx *= 0.985; // air drag
+      p.alpha -= p.decay;
+
+      if (p.alpha <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.alpha;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 5;
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = 1.0;
+    ctx.shadowBlur = 0;
+
+    animFrameId = requestAnimationFrame(renderLoop);
+  }
+
+  animFrameId = requestAnimationFrame(renderLoop);
+}
+
 async function initIndexPage() {
   const productsGrid = document.getElementById('products-grid');
   const categoryFilter = document.getElementById('category-filter');
@@ -216,7 +449,75 @@ async function initIndexPage() {
 
   if (!productsGrid) return;
 
-  // Real store hero is static and fast-loading; no artificial timers or scratch scripts needed.
+  // 0. Initialize Diwali Fireworks Canvas & Hero CTAs
+  initDiwaliFireworksCanvas();
+
+  const shopDiwaliBtn = document.getElementById('btn-shop-diwali-deals');
+  if (shopDiwaliBtn) {
+    shopDiwaliBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      activeSort = 'featured';
+      activeFestiveOnly = true;
+      if (festiveCheckbox) festiveCheckbox.checked = true;
+      if (sortSelect) sortSelect.value = 'featured';
+      filterAndRenderProducts();
+      document.getElementById('products-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      showToast('Diwali Deals & Verified Showcase Activated! ✨', 'success');
+    });
+  }
+
+  const viewAllBtn = document.getElementById('btn-view-all-products');
+  if (viewAllBtn) {
+    viewAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.resetAllFilters === 'function') {
+        window.resetAllFilters();
+      }
+      document.getElementById('products-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  // Hero Slider carousel controls
+  const heroPrevBtn = document.getElementById('hero-prev-btn');
+  const heroNextBtn = document.getElementById('hero-next-btn');
+  const heroDots = document.querySelectorAll('.hero-dot');
+  let currentHeroSlide = 0;
+  const totalHeroSlides = heroDots.length || 4;
+
+  function updateHeroSlide(index) {
+    currentHeroSlide = (index + totalHeroSlides) % totalHeroSlides;
+    heroDots.forEach((dot, idx) => {
+      dot.classList.toggle('active', idx === currentHeroSlide);
+    });
+  }
+
+  heroPrevBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    updateHeroSlide(currentHeroSlide - 1);
+  });
+
+  heroNextBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    updateHeroSlide(currentHeroSlide + 1);
+  });
+
+  heroDots.forEach((dot) => {
+    dot.addEventListener('click', (e) => {
+      e.preventDefault();
+      const slide = parseInt(dot.getAttribute('data-slide') || '0', 10);
+      updateHeroSlide(slide);
+    });
+  });
+
+  // Category horizontal scroll next button
+  const catScrollNext = document.getElementById('cat-scroll-next');
+  const catScrollWrapper = document.getElementById('diwali-categories-scroll-wrapper');
+  if (catScrollNext && catScrollWrapper) {
+    catScrollNext.addEventListener('click', (e) => {
+      e.preventDefault();
+      catScrollWrapper.scrollBy({ left: 240, behavior: 'smooth' });
+    });
+  }
 
   // 1. Filter Drawer Toggle Button
   if (filterBtn && filterDrawer) {
@@ -390,19 +691,19 @@ async function initIndexPage() {
     if (catRes.ok) {
       allCategoriesCache = await catRes.json();
 
-      // Render top horizontal pill list
+      // Wire up Category Navigation cards (preserving custom icons from reference)
       if (categoryFilter) {
-        let catHtml = `<button class="category-pill active" data-category="All">All Categories</button>`;
-        allCategoriesCache.forEach((cat) => {
-          catHtml += `<button class="category-pill" data-category="${escapeHtml(cat)}">${escapeHtml(cat)}</button>`;
-        });
-        categoryFilter.innerHTML = catHtml;
-
-        categoryFilter.querySelectorAll('.category-pill').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            categoryFilter.querySelectorAll('.category-pill').forEach(b => b.classList.remove('active'));
+        const catButtons = categoryFilter.querySelectorAll('.category-pill, .diwali-cat-card');
+        catButtons.forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            catButtons.forEach(b => {
+              b.classList.remove('active');
+              b.setAttribute('aria-selected', 'false');
+            });
             btn.classList.add('active');
-            activeCategory = btn.getAttribute('data-category');
+            btn.setAttribute('aria-selected', 'true');
+            activeCategory = btn.getAttribute('data-category') || 'All';
 
             // Sync with drawer radio
             document.querySelectorAll('.cat-filter-radio').forEach(radio => {
@@ -410,6 +711,12 @@ async function initIndexPage() {
             });
 
             filterAndRenderProducts();
+
+            // Smooth scroll to catalog grid
+            const grid = document.getElementById('products-grid');
+            if (grid && window.scrollY < grid.offsetTop - 150) {
+              grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
           });
         });
       }
@@ -450,28 +757,6 @@ async function initIndexPage() {
     console.error('Failed to load categories', err);
   }
 
-  // Fetch all products
-  try {
-    productsGrid.innerHTML = `
-      <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
-        <p style="font-size: 1.1rem; color: var(--text-muted);">Loading authentic Indian products...</p>
-      </div>
-    `;
-
-    const res = await fetch('/api/products');
-    if (!res.ok) throw new Error('Failed to fetch products');
-
-    allProductsCache = await res.json();
-    filterAndRenderProducts();
-  } catch (err) {
-    console.error('Error fetching products:', err);
-    productsGrid.innerHTML = `
-      <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
-        <p style="color: var(--danger); font-size: 1.1rem;">Failed to load products. Please check if server is running.</p>
-      </div>
-    `;
-  }
-
   // Handle URL query parameter search on index page
   const urlParams = new URLSearchParams(window.location.search);
   const searchParam = urlParams.get('search');
@@ -479,66 +764,129 @@ async function initIndexPage() {
     searchInput.value = searchParam;
   }
 
-  // Handle live search
+  // Handle live search with debounce to reset pagination and avoid stale results
   if (searchInput) {
     searchInput.addEventListener('input', () => {
-      filterAndRenderProducts();
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        filterAndRenderProducts();
+      }, 250);
     });
   }
+
+  // Attach Load More button listener
+  const loadMoreBtn = document.getElementById('btn-load-more');
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!isFetchingCatalog && catalogHasMore) {
+        fetchCatalogProducts(catalogCurrentPage + 1, true);
+      }
+    });
+  }
+
+  // Initial load: fetch page 1 (batch of 12)
+  fetchCatalogProducts(1, false);
 }
 
-function filterAndRenderProducts() {
-  const productsGrid = document.getElementById('products-grid');
-  const searchInput = document.getElementById('search-input');
+/**
+ * Render single product card HTML
+ * Consistently references stock_quantity for stock availability
+ */
+function renderProductCardHTML(product) {
+  const isVerified = product.price_status === 'verified' && product.price != null;
+  const isPurchasable = Boolean(product.is_purchasable) && isVerified;
+  const stockQty = Number(product.stock_quantity !== undefined ? product.stock_quantity : (product.stock || 0));
+  const isAvailable = isPurchasable && stockQty > 0;
+
+  let stockBadgeHtml = '';
+  if (isVerified) {
+    stockBadgeHtml = `<span class="stock-tag ${isAvailable ? '' : 'out-of-stock'}">${isAvailable ? 'In Stock' : 'Out of Stock'}</span>`;
+  } else {
+    stockBadgeHtml = `<span class="stock-tag unverified-tag">Catalog Item</span>`;
+  }
+
+  let priceHtml = '';
+  let buttonHtml = '';
+  if (isVerified) {
+    priceHtml = `<div class="product-price">${formatINR(product.price)}</div>`;
+    buttonHtml = isAvailable ? `
+      <button type="button" class="btn-add-cart" data-id="${product.id}" title="Add to Cart">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+        Add
+      </button>
+    ` : `
+      <button type="button" class="btn-add-cart btn-disabled" disabled title="Out of Stock">Sold Out</button>
+    `;
+  } else {
+    priceHtml = `<div class="product-price price-unverified">Price on Request</div>`;
+    buttonHtml = `
+      <a href="product.html?id=${product.id}" class="btn-inquire" title="View details and inquire">View</a>
+    `;
+  }
+
+  let ratingHtml = '';
+  if (product.rating != null && Number(product.rating) > 0) {
+    ratingHtml = `<span class="product-rating-badge">★ ${Number(product.rating).toFixed(1)}</span>`;
+  }
+
+  let brandHtml = '';
+  if (product.brand && product.brand !== 'AuraStore') {
+    brandHtml = `<span class="product-card-brand" title="${escapeHtml(product.brand)}">${escapeHtml(product.brand)}</span>`;
+  }
+
+  return `
+    <article class="product-card" id="product-card-${product.id}">
+      <a href="product.html?id=${product.id}" class="product-card-img-wrapper" title="View details for ${escapeHtml(product.name)}">
+        <img class="product-card-img" src="${escapeHtml(product.image_url)}" alt="${escapeHtml(product.name)}" loading="lazy" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=800&q=80';" />
+        <span class="category-badge">${escapeHtml(product.category || 'Special')}</span>
+        ${stockBadgeHtml}
+      </a>
+      <div class="product-card-body">
+        <div class="product-meta-row">
+          ${brandHtml}
+          ${ratingHtml}
+        </div>
+        <h3 class="product-title">
+          <a href="product.html?id=${product.id}">${escapeHtml(product.name)}</a>
+        </h3>
+        <p class="product-desc">${escapeHtml(product.description || '')}</p>
+        <div class="product-card-footer">
+          ${priceHtml}
+          ${buttonHtml}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+/**
+ * Attach Add to Cart event listeners to newly rendered product cards
+ */
+function attachAddToCartListeners(container) {
+  if (!container) return;
+  container.querySelectorAll('.btn-add-cart').forEach((btn) => {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = 'true';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = parseInt(btn.getAttribute('data-id'), 10);
+      const product = allProductsCache.find((p) => p.id === id);
+      if (product) {
+        addToCart(product, 1);
+      }
+    });
+  });
+}
+
+/**
+ * Update UI Filter Badges and Active Filter Chips Bar
+ */
+function updateActiveFilterUI() {
   const filterCountBadge = document.getElementById('filter-count-badge');
   const filterSummary = document.getElementById('filter-active-summary');
-  const resultsCountEl = document.getElementById('filtered-results-count');
   const chipsContainer = document.getElementById('active-filter-chips');
 
-  if (!productsGrid) return;
-
-  const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
-
-  let filtered = [...allProductsCache];
-
-  // 1. Filter by Category
-  if (activeCategory && activeCategory !== 'All') {
-    filtered = filtered.filter((p) => p.category === activeCategory);
-  }
-
-  // 2. Filter by Search Query
-  if (query) {
-    filtered = filtered.filter((p) =>
-      p.name.toLowerCase().includes(query) ||
-      (p.description && p.description.toLowerCase().includes(query))
-    );
-  }
-
-  // 3. Filter by Price Range
-  filtered = filtered.filter((p) => p.price >= activePriceMin && p.price <= activePriceMax);
-
-  // 4. Filter by In Stock Only
-  if (activeInStockOnly) {
-    filtered = filtered.filter((p) => p.stock > 0);
-  }
-
-  // 5. Filter by Festive Deals (<= ₹1,500)
-  if (activeFestiveOnly) {
-    filtered = filtered.filter((p) => p.price <= 1500);
-  }
-
-  // 6. Sort Filter
-  if (activeSort === 'price-asc') {
-    filtered.sort((a, b) => a.price - b.price);
-  } else if (activeSort === 'price-desc') {
-    filtered.sort((a, b) => b.price - a.price);
-  } else if (activeSort === 'name-asc') {
-    filtered.sort((a, b) => a.name.localeCompare(b.name));
-  } else if (activeSort === 'stock-desc') {
-    filtered.sort((a, b) => b.stock - a.stock);
-  }
-
-  // 7. Update Filter Count Badge & Active Filter Chips
   let activeFilterCount = 0;
   const chips = [];
 
@@ -599,7 +947,6 @@ function filterAndRenderProducts() {
     `);
   }
 
-  // Update Badge
   if (filterCountBadge) {
     if (activeFilterCount > 0) {
       filterCountBadge.style.display = 'inline-flex';
@@ -609,17 +956,10 @@ function filterAndRenderProducts() {
     }
   }
 
-  // Update Header Summary
   if (filterSummary) {
     filterSummary.textContent = activeFilterCount > 0 ? `${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''} active` : 'All Items';
   }
 
-  // Update Result Count
-  if (resultsCountEl) {
-    resultsCountEl.textContent = `Showing ${filtered.length} of ${allProductsCache.length} products`;
-  }
-
-  // Update Chips Container
   if (chipsContainer) {
     if (chips.length > 0) {
       chipsContainer.innerHTML = `
@@ -633,56 +973,176 @@ function filterAndRenderProducts() {
       chipsContainer.style.display = 'none';
     }
   }
+}
 
-  // Render Product Cards
-  if (filtered.length === 0) {
-    productsGrid.innerHTML = `
-      <div style="grid-column: 1/-1; text-align: center; padding: 60px 20px;">
-        <div style="font-size: 3rem; margin-bottom: 12px;">🔍</div>
-        <h3 style="font-size: 1.3rem; margin-bottom: 8px;">No matching products found</h3>
-        <p style="color: var(--text-muted); margin-bottom: 18px;">Try adjusting your price range or clearing some filters.</p>
-        <button type="button" class="btn-primary" onclick="window.resetAllFilters()" style="display: inline-flex; width: auto; padding: 8px 20px;">
-          Reset Filters
-        </button>
-      </div>
-    `;
+/**
+ * Fetch paginated products from backend API in batches of 12
+ * Handles pagination state, deduplication, and safe appending
+ */
+async function fetchCatalogProducts(page = 1, append = false) {
+  if (isFetchingCatalog) return;
+  isFetchingCatalog = true;
+
+  const productsGrid = document.getElementById('products-grid');
+  const loadMoreBtn = document.getElementById('btn-load-more');
+  const progressText = document.getElementById('catalog-progress-text');
+  const resultsCountEl = document.getElementById('filtered-results-count');
+
+  if (!productsGrid) {
+    isFetchingCatalog = false;
     return;
   }
 
-  productsGrid.innerHTML = filtered.map((product) => `
-    <article class="product-card" id="product-card-${product.id}">
-      <a href="product.html?id=${product.id}" class="product-card-img-wrapper" title="View details for ${escapeHtml(product.name)}">
-        <img class="product-card-img" src="${escapeHtml(product.image_url)}" alt="${escapeHtml(product.name)}" loading="lazy" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=800&q=80';" />
-        <span class="category-badge">${escapeHtml(product.category || 'Special')}</span>
-        <span class="stock-tag">${product.stock > 0 ? 'In Stock' : 'Out of Stock'}</span>
-      </a>
-      <div class="product-card-body">
-        <h3 class="product-title">
-          <a href="product.html?id=${product.id}">${escapeHtml(product.name)}</a>
-        </h3>
-        <p class="product-desc">${escapeHtml(product.description || '')}</p>
-        <div class="product-card-footer">
-          <div class="product-price">${formatINR(product.price)}</div>
-          <button class="btn-add-cart" data-id="${product.id}" title="Add to Cart">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-            Add
-          </button>
-        </div>
+  // Reset pagination state when starting a fresh query
+  if (!append) {
+    catalogCurrentPage = 1;
+    catalogLoadedIds.clear();
+    allProductsCache = [];
+    productsGrid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 48px 20px;">
+        <p style="font-size: 1.05rem; color: var(--text-muted);">Loading products...</p>
       </div>
-    </article>
-  `).join('');
+    `;
+    if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+  } else {
+    if (loadMoreBtn) {
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = 'Loading more products...';
+    }
+  }
 
-  // Attach Add to Cart event listeners
-  productsGrid.querySelectorAll('.btn-add-cart').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const id = parseInt(btn.getAttribute('data-id'), 10);
-      const product = allProductsCache.find((p) => p.id === id);
-      if (product) {
-        addToCart(product, 1);
+  try {
+    const url = new URL('/api/products', window.location.origin);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('limit', String(CATALOG_PAGE_SIZE));
+
+    if (activeCategory && activeCategory !== 'All') {
+      url.searchParams.set('category', activeCategory);
+    }
+
+    const searchInput = document.getElementById('search-input');
+    const searchVal = searchInput ? searchInput.value.trim() : '';
+    if (searchVal) {
+      url.searchParams.set('search', searchVal);
+    }
+
+    if (activeInStockOnly) {
+      url.searchParams.set('in_stock', 'true');
+    }
+
+    if (activeSort && activeSort !== 'featured') {
+      url.searchParams.set('sort', activeSort);
+    }
+
+    if (activePriceMin > 0) {
+      url.searchParams.set('min_price', String(activePriceMin));
+    }
+
+    if (activePriceMax < 999999) {
+      url.searchParams.set('max_price', String(activePriceMax));
+    }
+
+    const res = await fetch(url.toString());
+    if (res.status === 401) {
+      window.location.href = 'login.html';
+      return;
+    }
+    if (!res.ok) throw new Error('Failed to fetch products');
+
+    const data = await res.json();
+    const rawProducts = Array.isArray(data) ? data : (data.products || []);
+    const pagination = data.pagination || {
+      page,
+      limit: CATALOG_PAGE_SIZE,
+      total: rawProducts.length,
+      totalPages: Math.ceil(rawProducts.length / CATALOG_PAGE_SIZE) || 1,
+      hasMore: false
+    };
+
+    catalogCurrentPage = pagination.page;
+    catalogTotalPages = pagination.totalPages;
+    catalogTotalCount = pagination.total;
+    catalogHasMore = pagination.hasMore;
+
+    // Deduplicate items against catalogLoadedIds Set to guarantee no duplicates
+    const newProducts = [];
+    for (const p of rawProducts) {
+      if (!catalogLoadedIds.has(p.id)) {
+        catalogLoadedIds.add(p.id);
+        newProducts.push(p);
+        allProductsCache.push(p);
       }
-    });
-  });
+    }
+
+    if (!append) {
+      if (allProductsCache.length === 0) {
+        productsGrid.innerHTML = `
+          <div style="grid-column: 1/-1; text-align: center; padding: 60px 20px;">
+            <div style="font-size: 3rem; margin-bottom: 12px;">🔍</div>
+            <h3 style="font-size: 1.3rem; margin-bottom: 8px;">No matching products found</h3>
+            <p style="color: var(--text-muted); margin-bottom: 18px;">Try adjusting your search query or clearing some filters.</p>
+            <button type="button" class="btn-primary" onclick="window.resetAllFilters()" style="display: inline-flex; width: auto; padding: 8px 20px;">
+              Reset Filters
+            </button>
+          </div>
+        `;
+        if (progressText) progressText.textContent = 'Showing 0 of 0 products';
+        if (resultsCountEl) resultsCountEl.textContent = 'Showing 0 of 0 products';
+        if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+        isFetchingCatalog = false;
+        return;
+      }
+
+      productsGrid.innerHTML = allProductsCache.map(renderProductCardHTML).join('');
+    } else {
+      if (newProducts.length > 0) {
+        const html = newProducts.map(renderProductCardHTML).join('');
+        productsGrid.insertAdjacentHTML('beforeend', html);
+      }
+    }
+
+    attachAddToCartListeners(productsGrid);
+
+    // Update Progress Indicator & Results Count
+    const countStr = `Showing ${catalogLoadedIds.size} of ${catalogTotalCount} products`;
+    if (progressText) progressText.textContent = countStr;
+    if (resultsCountEl) resultsCountEl.textContent = countStr;
+
+    // Update Load More Button visibility & state
+    if (loadMoreBtn) {
+      if (catalogHasMore) {
+        loadMoreBtn.style.display = 'inline-flex';
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.textContent = 'Load More Products';
+      } else {
+        loadMoreBtn.style.display = 'none';
+      }
+    }
+
+    updateActiveFilterUI();
+  } catch (err) {
+    console.error('Error fetching catalog products:', err);
+    if (!append) {
+      productsGrid.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
+          <p style="color: var(--danger); font-size: 1.1rem;">Failed to load products. Please check if server is running.</p>
+        </div>
+      `;
+    }
+  } finally {
+    isFetchingCatalog = false;
+    if (loadMoreBtn && append) {
+      loadMoreBtn.disabled = false;
+      loadMoreBtn.textContent = 'Load More Products';
+    }
+  }
+}
+
+/**
+ * Filter change trigger: resets pagination to page 1 and fetches fresh data
+ */
+function filterAndRenderProducts() {
+  fetchCatalogProducts(1, false);
 }
 
 // ----------------------------------------------------
@@ -718,6 +1178,78 @@ async function initProductPage() {
     const product = await res.json();
     document.title = `${product.name} | Smart Grab Store`;
 
+    const isVerified = product.price_status === 'verified' && product.price != null;
+    const isPurchasable = Boolean(product.is_purchasable) && isVerified;
+    const availableStock = Number(product.stock_quantity !== undefined ? product.stock_quantity : (product.stock || 0));
+
+    let stockTagHtml = '';
+    if (isVerified) {
+      stockTagHtml = `<span class="stock-tag" style="position: static;">${availableStock > 0 ? `In Stock (${availableStock} units)` : 'Out of Stock'}</span>`;
+    } else {
+      stockTagHtml = `<span class="stock-tag unverified-tag" style="position: static;">Catalog Showcase Item</span>`;
+    }
+
+    let priceHtml = '';
+    if (isVerified) {
+      priceHtml = `
+        <div class="product-info-price">
+          ${formatINR(product.price)}
+          <span class="inclusive-tax">Inclusive of all taxes</span>
+        </div>
+      `;
+    } else {
+      priceHtml = `
+        <div class="product-info-price price-unverified">
+          Price on Request
+          <span class="inclusive-tax">Commercial catalog item — quote available upon request</span>
+        </div>
+      `;
+    }
+
+    let actionsHtml = '';
+    if (isPurchasable && availableStock > 0) {
+      actionsHtml = `
+        <div class="quantity-control">
+          <span class="label">Quantity:</span>
+          <div class="qty-btn-group">
+            <button class="qty-btn" id="qty-minus" aria-label="Decrease quantity">−</button>
+            <input type="number" id="detail-qty" class="qty-display" value="1" min="1" max="${availableStock}" readonly />
+            <button class="qty-btn" id="qty-plus" aria-label="Increase quantity">+</button>
+          </div>
+        </div>
+        <div class="product-action-buttons">
+          <button class="btn-primary-large" id="btn-detail-add-cart">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+            Add to Cart
+          </button>
+          <button class="btn-secondary-large" id="btn-detail-buy-now">
+            Buy Now
+          </button>
+        </div>
+      `;
+    } else if (isVerified && availableStock <= 0) {
+      actionsHtml = `
+        <div class="product-action-buttons">
+          <button class="btn-primary-large btn-disabled" disabled style="opacity: 0.6; cursor: not-allowed;">
+            Currently Out of Stock
+          </button>
+        </div>
+      `;
+    } else {
+      actionsHtml = `
+        <div class="product-action-buttons">
+          <button type="button" class="btn-primary-large" id="btn-detail-inquire" style="cursor: pointer;">
+            ✉️ Inquire for Pricing
+          </button>
+        </div>
+      `;
+    }
+
+    let brandHtml = '';
+    if (product.brand && product.brand !== 'AuraStore') {
+      brandHtml = `<span style="font-size: 0.9rem; font-weight: 700; color: var(--primary); text-transform: uppercase; margin-bottom: 4px; display: inline-block;">${escapeHtml(product.brand)}</span>`;
+    }
+
     container.innerHTML = `
       <div class="product-detail-container">
         <!-- Product Image Gallery -->
@@ -729,45 +1261,24 @@ async function initProductPage() {
         <div class="product-info-panel">
           <div class="product-info-meta">
             <span class="category-badge" style="position: static;">${escapeHtml(product.category || 'General')}</span>
-            <span class="stock-tag" style="position: static;">${product.stock > 0 ? `In Stock (${product.stock} units)` : 'Out of Stock'}</span>
+            ${stockTagHtml}
           </div>
 
+          ${brandHtml}
           <h1 class="product-info-title">${escapeHtml(product.name)}</h1>
           
-          <div class="product-info-price">
-            ${formatINR(product.price)}
-            <span class="inclusive-tax">Inclusive of all taxes</span>
-          </div>
+          ${priceHtml}
 
-          <p class="product-info-desc">${escapeHtml(product.description || 'Authentic handcrafted high quality product.')}</p>
+          <p class="product-info-desc">${escapeHtml(product.description || 'Authentic high quality catalog product.')}</p>
 
-          <!-- Quantity Selector -->
-          <div class="quantity-control">
-            <span class="label">Quantity:</span>
-            <div class="qty-btn-group">
-              <button class="qty-btn" id="qty-minus" aria-label="Decrease quantity">−</button>
-              <input type="number" id="detail-qty" class="qty-display" value="1" min="1" max="${product.stock || 99}" readonly />
-              <button class="qty-btn" id="qty-plus" aria-label="Increase quantity">+</button>
-            </div>
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="product-action-buttons">
-            <button class="btn-primary-large" id="btn-detail-add-cart">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-              Add to Cart
-            </button>
-            <button class="btn-secondary-large" id="btn-detail-buy-now">
-              Buy Now
-            </button>
-          </div>
+          ${actionsHtml}
 
           <!-- Value Propositions -->
           <div class="product-props-box">
-            <div class="prop-item"><span class="prop-icon">🚚</span> Free Express Delivery across India</div>
-            <div class="prop-item"><span class="prop-icon">🛡️</span> 100% Genuine & Hand-Inspected</div>
-            <div class="prop-item"><span class="prop-icon">🔄</span> 7 Days Easy Returns Guarantee</div>
-            <div class="prop-item"><span class="prop-icon">💳</span> Secure UPI & Card Checkout</div>
+            <div class="prop-item"><span class="prop-icon">🚚</span> Express Delivery across India</div>
+            <div class="prop-item"><span class="prop-icon">🛡️</span> 100% Genuine & Verified Sources</div>
+            <div class="prop-item"><span class="prop-icon">🔄</span> Reliable Support Guarantee</div>
+            <div class="prop-item"><span class="prop-icon">💳</span> Secure Encrypted Platform</div>
           </div>
         </div>
       </div>
@@ -775,28 +1286,35 @@ async function initProductPage() {
 
     // Quantity selector buttons
     const qtyInput = document.getElementById('detail-qty');
-    document.getElementById('qty-minus')?.addEventListener('click', () => {
-      let val = parseInt(qtyInput.value, 10) || 1;
-      if (val > 1) qtyInput.value = val - 1;
-    });
+    if (qtyInput) {
+      document.getElementById('qty-minus')?.addEventListener('click', () => {
+        let val = parseInt(qtyInput.value, 10) || 1;
+        if (val > 1) qtyInput.value = val - 1;
+      });
 
-    document.getElementById('qty-plus')?.addEventListener('click', () => {
-      let val = parseInt(qtyInput.value, 10) || 1;
-      const max = product.stock || 99;
-      if (val < max) qtyInput.value = val + 1;
-    });
+      document.getElementById('qty-plus')?.addEventListener('click', () => {
+        let val = parseInt(qtyInput.value, 10) || 1;
+        const max = availableStock > 0 ? availableStock : 99;
+        if (val < max) qtyInput.value = val + 1;
+      });
+    }
 
     // Add to Cart
     document.getElementById('btn-detail-add-cart')?.addEventListener('click', () => {
-      const qty = parseInt(qtyInput.value, 10) || 1;
+      const qty = parseInt(qtyInput?.value, 10) || 1;
       addToCart(product, qty);
     });
 
     // Buy Now
     document.getElementById('btn-detail-buy-now')?.addEventListener('click', () => {
-      const qty = parseInt(qtyInput.value, 10) || 1;
+      const qty = parseInt(qtyInput?.value, 10) || 1;
       addToCart(product, qty);
       window.location.href = 'cart.html';
+    });
+
+    // Inquire Button
+    document.getElementById('btn-detail-inquire')?.addEventListener('click', () => {
+      showToast(`Inquiry request recorded for "${product.name}". Our team will contact you.`, 'info');
     });
 
   } catch (err) {
@@ -1312,27 +1830,44 @@ function initLoginPage() {
   const loginForm = document.getElementById('login-form');
   if (!loginForm) return;
 
+  // Initialize show/hide password toggle
+  setupPasswordToggle('toggle-login-password', 'login-password');
+
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorBox = document.getElementById('login-error');
+    const successBox = document.getElementById('login-success');
     const submitBtn = document.getElementById('btn-login-submit');
 
-    errorBox.style.display = 'none';
+    if (errorBox) errorBox.style.display = 'none';
+    if (successBox) successBox.style.display = 'none';
 
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
 
+    // Frontend validation
     if (!email || !password) {
-      errorBox.textContent = 'Please enter both email and password.';
-      errorBox.style.display = 'block';
+      if (errorBox) {
+        errorBox.textContent = 'Please enter both your email address and password.';
+        errorBox.style.display = 'block';
+      }
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) {
+      if (errorBox) {
+        errorBox.textContent = 'Please enter a valid email address format.';
+        errorBox.style.display = 'block';
+      }
       return;
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Logging in...';
+    submitBtn.textContent = 'Signing in...';
 
     try {
-      const response = await fetch('/api/login', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -1341,24 +1876,33 @@ function initLoginPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Authentication failed.');
+        // Generic error message without revealing if email exists
+        throw new Error(data.error || 'Invalid email or password.');
       }
 
       setAuthSession(data.token, data.user);
-      showToast('Logged in successfully! Redirecting...', 'success');
+
+      if (successBox) {
+        successBox.textContent = 'Sign in successful! Redirecting to AuraStore...';
+        successBox.style.display = 'block';
+      }
+      showToast('Welcome back! Redirecting to store...', 'success');
 
       setTimeout(() => {
-        // If cart has items, return to cart; otherwise home
-        const cart = getCart();
-        window.location.href = cart.length > 0 ? 'cart.html' : 'index.html';
-      }, 700);
+        window.location.href = 'index.html';
+      }, 600);
 
     } catch (err) {
       console.error('Login error:', err);
-      errorBox.textContent = err.message || 'Invalid email or password.';
-      errorBox.style.display = 'block';
+      if (errorBox) {
+        const isNetworkErr = err.name === 'TypeError' || err.message === 'Failed to fetch' || (err.message && err.message.includes('fetch'));
+        errorBox.textContent = isNetworkErr
+          ? 'Unable to connect to the store server. Please ensure the Express server is running at http://localhost:3000 and MySQL is active.'
+          : (err.message || 'Invalid email or password.');
+        errorBox.style.display = 'block';
+      }
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Log In';
+      submitBtn.textContent = 'Sign In';
     }
   });
 }
@@ -1370,33 +1914,63 @@ function initRegisterPage() {
   const registerForm = document.getElementById('register-form');
   if (!registerForm) return;
 
+  // Initialize show/hide password toggles
+  setupPasswordToggle('toggle-register-password', 'register-password');
+  setupPasswordToggle('toggle-register-confirm-password', 'register-confirm-password');
+
   registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorBox = document.getElementById('register-error');
+    const successBox = document.getElementById('register-success');
     const submitBtn = document.getElementById('btn-register-submit');
 
-    errorBox.style.display = 'none';
+    if (errorBox) errorBox.style.display = 'none';
+    if (successBox) successBox.style.display = 'none';
 
     const name = document.getElementById('register-name').value.trim();
     const email = document.getElementById('register-email').value.trim();
     const password = document.getElementById('register-password').value;
     const confirmPassword = document.getElementById('register-confirm-password')?.value;
 
-    if (!name || !email || !password) {
-      errorBox.textContent = 'Please fill out all required fields.';
-      errorBox.style.display = 'block';
+    // Frontend validations
+    if (!name || !email || !password || !confirmPassword) {
+      if (errorBox) {
+        errorBox.textContent = 'Please fill out all required fields.';
+        errorBox.style.display = 'block';
+      }
       return;
     }
 
-    if (confirmPassword && password !== confirmPassword) {
-      errorBox.textContent = 'Passwords do not match.';
-      errorBox.style.display = 'block';
+    if (name.length < 2) {
+      if (errorBox) {
+        errorBox.textContent = 'Full name must be at least 2 characters.';
+        errorBox.style.display = 'block';
+      }
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) {
+      if (errorBox) {
+        errorBox.textContent = 'Please enter a valid email address.';
+        errorBox.style.display = 'block';
+      }
       return;
     }
 
     if (password.length < 6) {
-      errorBox.textContent = 'Password must be at least 6 characters long.';
-      errorBox.style.display = 'block';
+      if (errorBox) {
+        errorBox.textContent = 'Password must be at least 6 characters long.';
+        errorBox.style.display = 'block';
+      }
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      if (errorBox) {
+        errorBox.textContent = 'Passwords do not match. Please verify both entries.';
+        errorBox.style.display = 'block';
+      }
       return;
     }
 
@@ -1404,10 +1978,16 @@ function initRegisterPage() {
     submitBtn.textContent = 'Creating Account...';
 
     try {
-      const response = await fetch('/api/register', {
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({
+          full_name: name,
+          name: name,
+          email,
+          password,
+          confirm_password: confirmPassword
+        })
       });
 
       const data = await response.json();
@@ -1417,7 +1997,12 @@ function initRegisterPage() {
       }
 
       setAuthSession(data.token, data.user);
-      showToast('Account created successfully! Welcome to the store.', 'success');
+
+      if (successBox) {
+        successBox.textContent = 'Account created successfully! Welcome to AuraStore.';
+        successBox.style.display = 'block';
+      }
+      showToast('Account created successfully! Welcome to AuraStore.', 'success');
 
       setTimeout(() => {
         window.location.href = 'index.html';
@@ -1425,8 +2010,13 @@ function initRegisterPage() {
 
     } catch (err) {
       console.error('Registration error:', err);
-      errorBox.textContent = err.message || 'Could not register account.';
-      errorBox.style.display = 'block';
+      if (errorBox) {
+        const isNetworkErr = err.name === 'TypeError' || err.message === 'Failed to fetch' || (err.message && err.message.includes('fetch'));
+        errorBox.textContent = isNetworkErr
+          ? 'Unable to connect to the store server. Please ensure the Express server is running at http://localhost:3000 and MySQL is active.'
+          : (err.message || 'Could not register account.');
+        errorBox.style.display = 'block';
+      }
       submitBtn.disabled = false;
       submitBtn.textContent = 'Create Account';
     }

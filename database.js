@@ -1,205 +1,214 @@
-const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+require('dotenv').config();
+const mysql = require('mysql2/promise');
 
-// Path to SQLite database file
-const dbPath = path.join(__dirname, 'store.db');
-
-// Connect to SQLite database
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Failed to connect to SQLite database:', err.message);
-  } else {
-    console.log('Connected to SQLite database at:', dbPath);
-  }
+// MySQL connection pool configuration
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || '127.0.0.1',
+  port: parseInt(process.env.DB_PORT, 10) || 3306,
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'ecommerce_store',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  decimalNumbers: true
 });
 
-// Promise-based helper functions for clean async/await in server.js
-function query(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+// Helper for executing queries that return multiple rows
+async function query(sql, params = []) {
+  const [rows] = await pool.execute(sql, params);
+  return rows;
 }
 
-function get(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
+// Helper for executing queries that return a single row
+async function get(sql, params = []) {
+  const [rows] = await pool.execute(sql, params);
+  return rows.length > 0 ? rows[0] : null;
 }
 
-function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ id: this.lastID, changes: this.changes });
-    });
-  });
+// Helper for INSERT / UPDATE / DELETE queries
+async function run(sql, params = []) {
+  const [result] = await pool.execute(sql, params);
+  return {
+    id: result.insertId,
+    changes: result.affectedRows
+  };
 }
 
-// Indian dataset for seeding products table
+// Initial products dataset for seeding if table is brand new/empty
 const initialProducts = [
   {
-    name: 'Premium Cotton Kurta',
-    description: 'Breathable, 100% pure cotton kurta with a mandarin collar.',
-    price: 1499.00,
-    image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=800&q=80',
-    category: 'Ethnic Wear',
-    stock: 45
+    name: 'Aura Pro Wireless Headphones',
+    description: 'Active noise cancellation with 40-hour battery life and spatial audio.',
+    price: 199.99,
+    original_price: 249.99,
+    stock_quantity: 45,
+    image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80',
+    category: 'Audio',
+    brand: 'AuraStore',
+    rating: 4.8,
+    reviews_count: 124,
+    badge: 'Best Seller'
   },
   {
-    name: 'Kulhad Chai Mug Set',
-    description: 'Authentic terracotta clay mugs for traditional chai.',
-    price: 499.00,
-    image_url: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?q=80&w=800&auto=format&fit=crop',
-    category: 'Home',
-    stock: 120
+    name: 'Tactile Mechanical Keyboard',
+    description: 'Custom hot-swappable mechanical switches with RGB backlighting.',
+    price: 129.50,
+    original_price: 159.00,
+    stock_quantity: 30,
+    image_url: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=800&q=80',
+    category: 'Peripherals',
+    brand: 'AuraStore',
+    rating: 4.7,
+    reviews_count: 88,
+    badge: 'Popular'
   },
   {
-    name: 'TWS Bluetooth Earbuds',
-    description: 'True wireless earbuds with 40 hours playtime and deep bass.',
-    price: 2499.00,
-    image_url: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?q=80&w=800&auto=format&fit=crop',
-    category: 'Electronics',
-    stock: 60
+    name: 'Ultra-Slim Precision Mouse',
+    description: 'Ergonomic dual-mode wireless mouse with 4000 DPI laser sensor.',
+    price: 59.00,
+    original_price: 79.00,
+    stock_quantity: 60,
+    image_url: 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=800&q=80',
+    category: 'Peripherals',
+    brand: 'AuraStore',
+    rating: 4.6,
+    reviews_count: 65,
+    badge: null
   },
   {
-    name: 'Handcrafted Leather Wallet',
-    description: 'Genuine leather bi-fold wallet with RFID blocking.',
-    price: 899.00,
-    image_url: 'https://images.unsplash.com/photo-1627123424574-724758594e93?q=80&w=800&auto=format&fit=crop',
+    name: 'Minimalist Ceramic Coffee Dripper',
+    description: 'Handcrafted artisan ceramic pourover dripper for coffee enthusiasts.',
+    price: 34.00,
+    original_price: 45.00,
+    stock_quantity: 80,
+    image_url: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=800&q=80',
+    category: 'Lifestyle',
+    brand: 'AuraStore',
+    rating: 4.9,
+    reviews_count: 42,
+    badge: 'Eco Friendly'
+  },
+  {
+    name: 'Aerospace Aluminum Laptop Stand',
+    description: 'Foldable ergonomic aluminum riser supporting laptops up to 17 inches.',
+    price: 49.99,
+    original_price: 69.99,
+    stock_quantity: 50,
+    image_url: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=800&q=80',
     category: 'Accessories',
-    stock: 35
+    brand: 'AuraStore',
+    rating: 4.7,
+    reviews_count: 95,
+    badge: 'Top Rated'
   },
   {
-    name: 'Classic Denim Jacket',
-    description: 'Vintage-wash rugged denim jacket.',
-    price: 1999.00,
-    image_url: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?q=80&w=800&auto=format&fit=crop',
-    category: 'Apparel',
-    stock: 25
-  },
-  {
-    name: 'Smart Fitness Band',
-    description: 'Track steps, heart rate, and sleep with a 10-day battery.',
-    price: 3499.00,
-    image_url: 'https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?q=80&w=800&auto=format&fit=crop',
-    category: 'Electronics',
-    stock: 15
-  },
-  {
-    name: 'Ethnic Jutti (Women)',
-    description: 'Traditional hand-embroidered Punjabi juttis.',
-    price: 1299.00,
-    image_url: 'https://images.unsplash.com/photo-1614252369475-531eba835eb1?q=80&w=800&auto=format&fit=crop',
-    category: 'Footwear',
-    stock: 40
-  },
-  {
-    name: 'Anti-Theft Laptop Backpack',
-    description: 'Water-resistant backpack with USB charging port.',
-    price: 1199.00,
-    image_url: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?q=80&w=800&auto=format&fit=crop',
-    category: 'Bags',
-    stock: 80
+    name: 'Heritage Waxed Canvas Backpack',
+    description: 'Weatherproof heavy-duty canvas pack with padded laptop compartment.',
+    price: 119.00,
+    original_price: 149.00,
+    stock_quantity: 25,
+    image_url: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=800&q=80',
+    category: 'Lifestyle',
+    brand: 'AuraStore',
+    rating: 4.8,
+    reviews_count: 73,
+    badge: 'New Arrival'
   }
 ];
 
-// Initialize schema and seed database
-function initDatabase() {
-  db.serialize(() => {
-    // Enable SQLite foreign key constraints
-    db.run('PRAGMA foreign_keys = ON;');
+// Initialize database schema and verify connectivity
+async function initDatabase() {
+  try {
+    const connection = await pool.getConnection();
+    console.log('Connected to MySQL database:', process.env.DB_NAME || 'ecommerce_store');
 
-    // 1. Users Table
-    db.run(`
+    // 1. Ensure Users Table exists
+    await connection.execute(`
       CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(191) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // 2. Products Table
-    db.run(`
+    // 2. Ensure Products Table exists
+    await connection.execute(`
       CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(200) NOT NULL,
         description TEXT,
-        price REAL NOT NULL,
-        image_url TEXT,
-        category TEXT,
-        stock INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
+        price DECIMAL(10,2) NOT NULL,
+        original_price DECIMAL(10,2) DEFAULT NULL,
+        stock_quantity INT DEFAULT 0,
+        image_url VARCHAR(500),
+        category VARCHAR(100) DEFAULT 'General',
+        brand VARCHAR(100) NOT NULL DEFAULT 'AuraStore',
+        rating DECIMAL(2,1) NOT NULL DEFAULT 4.5,
+        reviews_count INT NOT NULL DEFAULT 50,
+        badge VARCHAR(50) DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // 3. Orders Table
-    db.run(`
+    // 3. Ensure Orders Table exists
+    await connection.execute(`
       CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        customer_name TEXT NOT NULL,
-        customer_email TEXT NOT NULL,
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        total_amount DECIMAL(10,2) NOT NULL,
+        status ENUM('pending','completed','cancelled') DEFAULT 'completed',
         shipping_address TEXT NOT NULL,
-        total_amount REAL NOT NULL,
-        status TEXT DEFAULT 'Processing',
-        items TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-      );
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    // Check if products table is empty, and seed the dataset
-    db.get('SELECT COUNT(*) AS count FROM products;', (err, row) => {
-      if (err) {
-        console.error('Error verifying products table:', err.message);
-        return;
+    // 4. Ensure Order Items Table exists
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS order_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL,
+        product_id INT NOT NULL,
+        quantity INT NOT NULL,
+        unit_price DECIMAL(10,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products (id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Check existing products count
+    const [rows] = await connection.execute('SELECT COUNT(*) AS count FROM products');
+    const count = rows[0]?.count || 0;
+
+    if (count === 0) {
+      console.log('Products table is empty. Seeding initial products...');
+      for (const p of initialProducts) {
+        await connection.execute(
+          `INSERT INTO products (name, description, price, original_price, stock_quantity, image_url, category, brand, rating, reviews_count, badge)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [p.name, p.description, p.price, p.original_price, p.stock_quantity, p.image_url, p.category, p.brand, p.rating, p.reviews_count, p.badge]
+        );
       }
+      console.log(`Successfully seeded ${initialProducts.length} initial products.`);
+    } else {
+      console.log(`Database already contains ${count} products. Reusing existing data.`);
+    }
 
-      if (row && row.count === 0) {
-        console.log('Products table is empty. Seeding initial Indian products dataset...');
-        const stmt = db.prepare(`
-          INSERT INTO products (name, description, price, image_url, category, stock)
-          VALUES (?, ?, ?, ?, ?, ?);
-        `);
-
-        initialProducts.forEach((product) => {
-          stmt.run([
-            product.name,
-            product.description,
-            product.price,
-            product.image_url,
-            product.category,
-            product.stock
-          ]);
-        });
-
-        stmt.finalize((finalizeErr) => {
-          if (finalizeErr) {
-            console.error('Error finalizing seed statement:', finalizeErr.message);
-          } else {
-            console.log(`Successfully seeded ${initialProducts.length} products into the database.`);
-          }
-        });
-      } else {
-        console.log(`Database already contains ${row.count} products. Skipping seeding.`);
-      }
-    });
-  });
+    connection.release();
+  } catch (error) {
+    console.error('MySQL database initialization error:', error.message);
+  }
 }
 
-// Execute database initialization
+// Run non-destructive initialization
 initDatabase();
 
 module.exports = {
-  db,
+  pool,
   query,
   get,
   run,

@@ -1,87 +1,179 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db, query, get, run } = require('./database');
+const { pool, query, get, run } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'indian_store_super_secret_jwt_key_2026';
+const JWT_SECRET = process.env.JWT_SECRET || 'aurastore_super_secure_jwt_secret_key_2026_production';
+const IS_PROD = process.env.NODE_ENV === 'production';
+
+// Cookie settings for HttpOnly session token
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: IS_PROD,
+  sameSite: 'lax',
+  path: '/',
+  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+};
 
 // ----------------------------------------------------
-// Middleware
+// Core Middleware
 // ----------------------------------------------------
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Serve static assets from public/ folder (index.html, product.html, cart.html, etc.)
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(cookieParser());
 
 // ----------------------------------------------------
 // Authentication Helpers & Middleware
 // ----------------------------------------------------
 
 /**
- * Middleware: Verify JWT token for protected routes
+ * Extract JWT from HttpOnly cookie or Authorization header
  */
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // "Bearer <TOKEN>"
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access denied. Authentication token required.' });
+function extractToken(req) {
+  if (req.cookies && req.cookies.auth_token) {
+    return req.cookies.auth_token;
   }
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: 'Invalid or expired authentication token.' });
-    }
-    req.user = user;
-    next();
-  });
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+  return null;
 }
 
 /**
- * Middleware: Optional JWT check for routes that can work for both
- * logged-in users and guests (such as checkout)
+ * Verify JWT token string
+ */
+function verifyUserToken(token) {
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Middleware: Strictly enforce authentication for protected API endpoints.
+ * Returns HTTP 401 if unauthenticated.
+ */
+function requireAuthApi(req, res, next) {
+  const token = extractToken(req);
+  const user = verifyUserToken(token);
+
+  if (!user) {
+    return res.status(401).json({
+      error: 'Access denied. Please log in to access this resource.',
+      code: 'UNAUTHORIZED'
+    });
+  }
+
+  req.user = user;
+  next();
+}
+
+/**
+ * Middleware: Optional authentication check
  */
 function optionalAuth(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = extractToken(req);
+  const user = verifyUserToken(token);
+  if (user) {
+    req.user = user;
+  }
+  next();
+}
 
-  if (!token) {
+// ----------------------------------------------------
+// Authentication-First Page Routing & Protection
+// ----------------------------------------------------
+
+// List of public auth pages that unauthenticated visitors can view
+const PUBLIC_HTML_PAGES = ['/login.html', '/register.html'];
+
+// List of protected HTML pages that require an active session
+const PROTECTED_HTML_PAGES = ['/index.html', '/product.html', '/cart.html', '/track.html'];
+
+/**
+ * Root route ('/'):
+ * Directs visitors according to authentication status.
+ * Unauthenticated visitors are directed to /login.html.
+ * Authenticated visitors are directed to the store homepage.
+ */
+app.get('/', (req, res) => {
+  const token = extractToken(req);
+  const user = verifyUserToken(token);
+
+  if (user) {
+    return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  }
+  return res.redirect('/login.html');
+});
+
+// Protect all private HTML page entries from direct URL access
+app.use((req, res, next) => {
+  // Check if requesting an HTML file or private page
+  const reqPath = req.path.toLowerCase();
+
+  // If requesting a public auth page while already logged in, redirect to homepage
+  if (PUBLIC_HTML_PAGES.includes(reqPath)) {
+    const token = extractToken(req);
+    const user = verifyUserToken(token);
+    if (user) {
+      return res.redirect('/index.html');
+    }
     return next();
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (!err && user) {
-      req.user = user;
+  // If requesting a protected HTML page
+  if (PROTECTED_HTML_PAGES.includes(reqPath) || (reqPath.endsWith('.html') && !PUBLIC_HTML_PAGES.includes(reqPath))) {
+    const token = extractToken(req);
+    const user = verifyUserToken(token);
+
+    if (!user) {
+      return res.redirect('/login.html');
     }
-    next();
-  });
-}
+  }
+
+  next();
+});
+
+// Serve static assets (CSS, JS, images, icons)
+// Set index: false so Express does NOT automatically serve index.html to unauthenticated visitors at '/'
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ----------------------------------------------------
-// 1. User Registration API
+// 1. Authentication APIs
 // ----------------------------------------------------
 
 /**
- * POST /api/register
- * Body: { name, email, password }
+ * User Registration API
+ * POST /api/auth/register & POST /api/register
  */
 async function registerUser(req, res) {
   try {
-    const { name, email, password } = req.body;
+    const name = (req.body.full_name || req.body.fullName || req.body.name || '').trim();
+    const email = (req.body.email || '').trim().toLowerCase();
+    const password = req.body.password || '';
+    const confirmPassword = req.body.confirmPassword || req.body.confirm_password || '';
 
+    // Backend validation
     if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are all required.' });
+      return res.status(400).json({ error: 'Full name, email address, and password are all required.' });
     }
 
-    const trimmedEmail = email.trim().toLowerCase();
+    if (name.length < 2) {
+      return res.status(400).json({ error: 'Please enter a valid full name (at least 2 characters).' });
+    }
+
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(trimmedEmail)) {
+    if (!emailPattern.test(email)) {
       return res.status(400).json({ error: 'Please provide a valid email address.' });
     }
 
@@ -89,37 +181,47 @@ async function registerUser(req, res) {
       return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
     }
 
-    // Check if user already exists
-    const existingUser = await get('SELECT id FROM users WHERE email = ?', [trimmedEmail]);
+    if (confirmPassword && password !== confirmPassword) {
+      return res.status(400).json({ error: 'Password and confirm password do not match.' });
+    }
+
+    // Check for duplicate email in MySQL
+    const existingUser = await get('SELECT id FROM users WHERE email = ?', [email]);
     if (existingUser) {
       return res.status(409).json({ error: 'An account with this email address already exists.' });
     }
 
-    // Hash password securely with bcrypt
+    // Hash password with bcrypt
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Save to database
+    // Insert user into MySQL users table
     const result = await run(
       'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
-      [name.trim(), trimmedEmail, hashedPassword]
+      [name, email, hashedPassword]
     );
+
+    const newUser = {
+      id: result.id,
+      name,
+      full_name: name,
+      email
+    };
 
     // Generate JWT token
     const token = jwt.sign(
-      { id: result.id, name: name.trim(), email: trimmedEmail },
+      { id: newUser.id, name: newUser.name, email: newUser.email },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
+    // Set secure HttpOnly cookie
+    res.cookie('auth_token', token, COOKIE_OPTIONS);
+
     return res.status(201).json({
       success: true,
-      message: 'Account created successfully!',
+      message: 'Account created successfully! Welcome to AuraStore.',
       token,
-      user: {
-        id: result.id,
-        name: name.trim(),
-        email: trimmedEmail
-      }
+      user: newUser
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -127,45 +229,46 @@ async function registerUser(req, res) {
   }
 }
 
-app.post('/api/register', registerUser);
 app.post('/api/auth/register', registerUser);
-
-// ----------------------------------------------------
-// 2. User Login API (JWT)
-// ----------------------------------------------------
+app.post('/api/register', registerUser);
 
 /**
- * POST /api/login
- * Body: { email, password }
+ * User Login API
+ * POST /api/auth/login & POST /api/login
+ * Generic error message to prevent user enumeration
  */
 async function loginUser(req, res) {
   try {
-    const { email, password } = req.body;
+    const email = (req.body.email || '').trim().toLowerCase();
+    const password = req.body.password || '';
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required.' });
+      return res.status(400).json({ error: 'Both email and password are required.' });
     }
 
-    const trimmedEmail = email.trim().toLowerCase();
+    // Lookup user by email in MySQL
+    const user = await get('SELECT id, name, email, password FROM users WHERE email = ?', [email]);
 
-    // Look up user by email
-    const user = await get('SELECT * FROM users WHERE email = ?', [trimmedEmail]);
+    // Constant-time-like rejection: generic error without revealing email presence
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Compare provided password with hashed password
+    // Verify password hash
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Generate JWT token
+    // Generate authenticated JWT session
     const token = jwt.sign(
       { id: user.id, name: user.name, email: user.email },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    // Set HttpOnly cookie
+    res.cookie('auth_token', token, COOKIE_OPTIONS);
 
     return res.status(200).json({
       success: true,
@@ -174,6 +277,7 @@ async function loginUser(req, res) {
       user: {
         id: user.id,
         name: user.name,
+        full_name: user.name,
         email: user.email
       }
     });
@@ -183,19 +287,50 @@ async function loginUser(req, res) {
   }
 }
 
-app.post('/api/login', loginUser);
 app.post('/api/auth/login', loginUser);
+app.post('/api/login', loginUser);
 
 /**
- * GET /api/auth/me
- * Returns authenticated user details
+ * Logout API
+ * POST /api/auth/logout & GET /logout
  */
-app.get('/api/auth/me', authenticateToken, async (req, res) => {
+function handleLogout(req, res) {
+  res.clearCookie('auth_token', {
+    httpOnly: true,
+    secure: IS_PROD,
+    sameSite: 'lax',
+    path: '/'
+  });
+
+  if (req.method === 'GET' || req.headers.accept?.includes('text/html')) {
+    return res.redirect('/login.html');
+  }
+
+  return res.json({
+    success: true,
+    message: 'Logged out successfully.'
+  });
+}
+
+app.post('/api/auth/logout', handleLogout);
+app.post('/api/logout', handleLogout);
+app.get('/logout', handleLogout);
+
+/**
+ * Authenticated Profile Endpoint
+ * GET /api/auth/me
+ */
+app.get('/api/auth/me', requireAuthApi, async (req, res) => {
   try {
-    const user = await get('SELECT id, name, email, created_at FROM users WHERE id = ?', [req.user.id]);
+    const user = await get(
+      'SELECT id, name, name AS full_name, email, created_at FROM users WHERE id = ?',
+      [req.user.id]
+    );
+
     if (!user) {
-      return res.status(404).json({ error: 'User not found.' });
+      return res.status(404).json({ error: 'User profile not found.' });
     }
+
     return res.json({ user });
   } catch (error) {
     console.error('Fetch me error:', error);
@@ -204,33 +339,80 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 3. Products APIs
+// 2. Protected Products APIs
 // ----------------------------------------------------
 
 /**
  * GET /api/products
- * Fetch all products, with optional ?category= and ?search= filters
+ * Fetch paginated products from MySQL with optional filtering and sorting.
+ * Query parameters: page (default 1), limit (default 12), category, search, in_stock, min_price, max_price, sort
  */
-app.get('/api/products', async (req, res) => {
+app.get('/api/products', requireAuthApi, async (req, res) => {
   try {
-    const { category, search } = req.query;
-    let sql = 'SELECT * FROM products WHERE 1=1';
+    const { category, search, sort, in_stock, min_price, max_price } = req.query;
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 12));
+    const offset = (page - 1) * limit;
+
+    let whereSql = ' WHERE 1=1';
     const params = [];
 
     if (category && category.trim() !== '' && category !== 'All') {
-      sql += ' AND category = ?';
+      whereSql += ' AND category = ?';
       params.push(category.trim());
     }
 
     if (search && search.trim() !== '') {
-      sql += ' AND (name LIKE ? OR description LIKE ?)';
+      whereSql += ' AND (name LIKE ? OR description LIKE ?)';
       params.push(`%${search.trim()}%`, `%${search.trim()}%`);
     }
 
-    sql += ' ORDER BY id ASC';
+    if (in_stock === 'true' || in_stock === true || in_stock === '1') {
+      whereSql += ' AND stock_quantity > 0';
+    }
 
-    const products = await query(sql, params);
-    return res.json(products);
+    if (min_price && !isNaN(parseFloat(min_price))) {
+      whereSql += ' AND price >= ?';
+      params.push(parseFloat(min_price));
+    }
+
+    if (max_price && !isNaN(parseFloat(max_price))) {
+      whereSql += ' AND price <= ?';
+      params.push(parseFloat(max_price));
+    }
+
+    // Determine ordering safely
+    let orderBySql = ' ORDER BY id ASC';
+    if (sort === 'price-asc') {
+      orderBySql = ' ORDER BY price ASC, id ASC';
+    } else if (sort === 'price-desc') {
+      orderBySql = ' ORDER BY price DESC, id ASC';
+    } else if (sort === 'name-asc') {
+      orderBySql = ' ORDER BY name ASC, id ASC';
+    } else if (sort === 'stock-desc') {
+      orderBySql = ' ORDER BY stock_quantity DESC, id ASC';
+    }
+
+    // 1. Total count query for pagination metadata
+    const countRows = await query(`SELECT COUNT(*) AS total FROM products${whereSql}`, params);
+    const total = countRows[0]?.total || 0;
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    // 2. Fetch paginated products with stock_quantity preserved and aliased as stock
+    const productsSql = `SELECT *, stock_quantity AS stock FROM products${whereSql}${orderBySql} LIMIT ? OFFSET ?`;
+    const products = await query(productsSql, [...params, limit, offset]);
+
+    return res.json({
+      products,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasMore: page < totalPages
+      }
+    });
   } catch (error) {
     console.error('Fetch products error:', error);
     return res.status(500).json({ error: 'Failed to fetch products from database.' });
@@ -239,9 +421,9 @@ app.get('/api/products', async (req, res) => {
 
 /**
  * GET /api/categories
- * Fetch distinct categories list
+ * Fetch distinct categories from MySQL products
  */
-app.get('/api/categories', async (req, res) => {
+app.get('/api/categories', requireAuthApi, async (req, res) => {
   try {
     const rows = await query('SELECT DISTINCT category FROM products WHERE category IS NOT NULL ORDER BY category ASC');
     const categories = rows.map((r) => r.category);
@@ -256,14 +438,14 @@ app.get('/api/categories', async (req, res) => {
  * GET /api/products/:id
  * Fetch single product by ID
  */
-app.get('/api/products/:id', async (req, res) => {
+app.get('/api/products/:id', requireAuthApi, async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
     if (isNaN(productId)) {
       return res.status(400).json({ error: 'Invalid product ID.' });
     }
 
-    const product = await get('SELECT * FROM products WHERE id = ?', [productId]);
+    const product = await get('SELECT *, stock_quantity AS stock FROM products WHERE id = ?', [productId]);
     if (!product) {
       return res.status(404).json({ error: 'Product not found.' });
     }
@@ -276,41 +458,43 @@ app.get('/api/products/:id', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 4. Checkout & Order APIs
+// 3. Protected Orders & Checkout APIs
 // ----------------------------------------------------
 
 /**
- * POST /api/checkout (and POST /api/orders)
- * Saves an order containing cart items, customer info, and total.
- * Body: { items, customerName, customerEmail, shippingAddress, totalAmount }
+ * POST /api/checkout & POST /api/orders
+ * Saves order in MySQL orders and order_items tables
  */
 async function handleCheckout(req, res) {
   try {
     const { items, customerName, customerEmail, shippingAddress, totalAmount } = req.body;
 
-    // Validate cart items
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Your cart is empty. Please add items before checking out.' });
     }
 
-    // Determine customer name & email (authenticated user or guest input)
-    const userId = req.user ? req.user.id : null;
-    const finalName = customerName || (req.user ? req.user.name : null);
-    const finalEmail = customerEmail || (req.user ? req.user.email : null);
-
-    if (!finalName || !finalName.trim()) {
-      return res.status(400).json({ error: 'Customer name is required for order delivery.' });
-    }
-
-    if (!finalEmail || !finalEmail.trim()) {
-      return res.status(400).json({ error: 'Customer email is required for order confirmation.' });
-    }
+    const userId = req.user.id;
+    const finalName = customerName || req.user.name;
+    const finalEmail = customerEmail || req.user.email;
 
     if (!shippingAddress || !shippingAddress.trim()) {
       return res.status(400).json({ error: 'Shipping delivery address is required.' });
     }
 
-    // Sanitize and calculate order total
+    // Verify each item is purchasable and has verified pricing
+    for (const item of items) {
+      const prodId = parseInt(item.id || item.productId, 10);
+      if (prodId) {
+        const prod = await get('SELECT is_purchasable, price_status, name FROM products WHERE id = ?', [prodId]);
+        if (prod && (!prod.is_purchasable || prod.price_status === 'unverified')) {
+          return res.status(400).json({
+            error: `"${prod.name}" is currently a catalog showcase item pending price verification and cannot be checked out.`
+          });
+        }
+      }
+    }
+
+    // Calculate total
     let calculatedTotal = 0;
     const sanitizedItems = items.map((item) => {
       const price = parseFloat(item.price) || 0;
@@ -328,34 +512,45 @@ async function handleCheckout(req, res) {
 
     const finalTotal = totalAmount ? parseFloat(totalAmount) : calculatedTotal;
 
-    // Save order into SQLite orders table with initial status 'Order Placed'
-    const result = await run(
-      `INSERT INTO orders (user_id, customer_name, customer_email, shipping_address, total_amount, status, items)
-       VALUES (?, ?, ?, ?, ?, 'Order Placed', ?)`,
-      [
-        userId,
-        finalName.trim(),
-        finalEmail.trim().toLowerCase(),
-        shippingAddress.trim(),
-        finalTotal,
-        JSON.stringify(sanitizedItems)
-      ]
+    // Insert order into MySQL orders table
+    const orderResult = await run(
+      `INSERT INTO orders (user_id, total_amount, status, shipping_address)
+       VALUES (?, ?, 'completed', ?)`,
+      [userId, finalTotal, shippingAddress.trim()]
     );
+
+    const orderId = orderResult.id;
+
+    // Insert order items
+    for (const item of sanitizedItems) {
+      const prodId = parseInt(item.id, 10) || null;
+      if (prodId) {
+        try {
+          await run(
+            `INSERT INTO order_items (order_id, product_id, quantity, unit_price)
+             VALUES (?, ?, ?, ?)`,
+            [orderId, prodId, item.quantity, item.price]
+          );
+        } catch (itemErr) {
+          console.warn('Item insert note:', itemErr.message);
+        }
+      }
+    }
 
     return res.status(201).json({
       success: true,
       message: 'Order placed successfully! Thank you for shopping with us.',
-      orderId: result.id,
+      orderId,
       order: {
-        id: result.id,
-        userId,
-        customerName: finalName.trim(),
-        customerEmail: finalEmail.trim().toLowerCase(),
-        shippingAddress: shippingAddress.trim(),
-        totalAmount: finalTotal,
+        id: orderId,
+        user_id: userId,
+        customer_name: finalName,
+        customer_email: finalEmail,
+        shipping_address: shippingAddress.trim(),
+        total_amount: finalTotal,
         status: 'Order Placed',
         items: sanitizedItems,
-        createdAt: new Date().toISOString()
+        created_at: new Date().toISOString()
       }
     });
   } catch (error) {
@@ -364,34 +559,37 @@ async function handleCheckout(req, res) {
   }
 }
 
-app.post('/api/checkout', optionalAuth, handleCheckout);
-app.post('/api/orders', optionalAuth, handleCheckout);
+app.post('/api/checkout', requireAuthApi, handleCheckout);
+app.post('/api/orders', requireAuthApi, handleCheckout);
 
 /**
  * GET /api/orders
  * Retrieve orders for the authenticated user
  */
-app.get('/api/orders', authenticateToken, async (req, res) => {
+app.get('/api/orders', requireAuthApi, async (req, res) => {
   try {
     const orders = await query(
-      'SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC',
+      `SELECT o.*, u.name AS customer_name, u.email AS customer_email
+       FROM orders o
+       JOIN users u ON o.user_id = u.id
+       WHERE o.user_id = ?
+       ORDER BY o.created_at DESC`,
       [req.user.id]
     );
 
-    const formattedOrders = orders.map((order) => {
-      let parsedItems = [];
-      try {
-        parsedItems = JSON.parse(order.items);
-      } catch (e) {
-        parsedItems = [];
-      }
-      return {
-        ...order,
-        items: parsedItems
-      };
-    });
+    // Attach items to each order
+    for (const order of orders) {
+      const items = await query(
+        `SELECT oi.id, oi.product_id, oi.quantity, oi.unit_price AS price, p.name, p.image_url
+         FROM order_items oi
+         LEFT JOIN products p ON oi.product_id = p.id
+         WHERE oi.order_id = ?`,
+        [order.id]
+      );
+      order.items = items;
+    }
 
-    return res.json(formattedOrders);
+    return res.json(orders);
   } catch (error) {
     console.error('Fetch orders error:', error);
     return res.status(500).json({ error: 'Failed to retrieve orders.' });
@@ -400,95 +598,59 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
 
 /**
  * GET /api/orders/:id
- * Retrieve a specific order by ID (supports tracking lookup)
+ * Retrieve order details by ID
  */
-app.get('/api/orders/:id', optionalAuth, async (req, res) => {
+app.get('/api/orders/:id', requireAuthApi, async (req, res) => {
   try {
     const orderId = parseInt(req.params.id, 10);
     if (isNaN(orderId)) {
       return res.status(400).json({ error: 'Invalid order ID.' });
     }
 
-    const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
+    const order = await get(
+      `SELECT o.*, u.name AS customer_name, u.email AS customer_email
+       FROM orders o
+       JOIN users u ON o.user_id = u.id
+       WHERE o.id = ?`,
+      [orderId]
+    );
+
     if (!order) {
       return res.status(404).json({ error: 'Order not found.' });
     }
 
-    let parsedItems = [];
-    try {
-      parsedItems = JSON.parse(order.items);
-    } catch (e) {
-      parsedItems = [];
-    }
+    const items = await query(
+      `SELECT oi.id, oi.product_id, oi.quantity, oi.unit_price AS price, p.name, p.image_url
+       FROM order_items oi
+       LEFT JOIN products p ON oi.product_id = p.id
+       WHERE oi.order_id = ?`,
+      [orderId]
+    );
+    order.items = items;
 
-    return res.json({
-      ...order,
-      items: parsedItems
-    });
+    return res.json(order);
   } catch (error) {
     console.error('Fetch order by ID error:', error);
     return res.status(500).json({ error: 'Failed to retrieve order details.' });
   }
 });
 
-/**
- * PATCH /api/orders/:id/status
- * Update order tracking status (Order Placed, Processing, Shipped, Out for Delivery, Delivered)
- */
-app.patch('/api/orders/:id/status', async (req, res) => {
-  try {
-    const orderId = parseInt(req.params.id, 10);
-    const { status } = req.body;
-
-    const validStatuses = ['Order Placed', 'Processing', 'Shipped', 'Out for Delivery', 'Delivered'];
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({
-        error: `Invalid status. Valid statuses are: ${validStatuses.join(', ')}`
-      });
-    }
-
-    const existingOrder = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
-    if (!existingOrder) {
-      return res.status(404).json({ error: 'Order not found.' });
-    }
-
-    await run('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
-
-    const updatedOrder = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
-    let parsedItems = [];
-    try {
-      parsedItems = JSON.parse(updatedOrder.items);
-    } catch (e) {
-      parsedItems = [];
-    }
-
-    return res.json({
-      success: true,
-      message: `Order status updated to "${status}"`,
-      order: {
-        ...updatedOrder,
-        items: parsedItems
-      }
-    });
-  } catch (error) {
-    console.error('Update status error:', error);
-    return res.status(500).json({ error: 'Failed to update order status.' });
-  }
-});
-
 // ----------------------------------------------------
-// Health check route
+// Health check
 // ----------------------------------------------------
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
     timestamp: new Date().toISOString(),
-    store: 'Indian eCommerce Store API'
+    store: 'AuraStore API',
+    database: 'MySQL'
   });
 });
 
 // Start Express Server
-app.listen(PORT, () => {
-  console.log(`Server is running at http://localhost:${PORT}`);
-  console.log(`Serving static files from ${path.join(__dirname, 'public')}`);
+const server = app.listen(PORT, () => {
+  console.log(`AuraStore server is running at http://localhost:${PORT}`);
+  console.log(`Database connected: MySQL (${process.env.DB_NAME || 'ecommerce_store'})`);
 });
+
+module.exports = app;
